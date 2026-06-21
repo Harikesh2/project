@@ -43,6 +43,8 @@ async def upload_image(file: UploadFile = File(...)):
             "key": result["key"]
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Upload endpoint error: {e}")
         raise HTTPException(

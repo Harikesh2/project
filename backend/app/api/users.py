@@ -10,9 +10,22 @@ router = APIRouter(tags=["users"])
 
 
 @router.post("", response_model=User)
-async def create_user(user_data: UserCreate):
+async def create_user(
+    user_data: UserCreate,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """Create a new user"""
-    user = await user_service.create_user(user_data)
+    user = await user_service.create_user(user_data, current_user["user_id"])
+    return user
+
+
+@router.post("/me", response_model=User)
+async def create_current_user_profile(
+    user_data: UserCreate,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Create profile for the current authenticated user"""
+    user = await user_service.create_user(user_data, current_user["user_id"])
     return user
 
 
@@ -27,23 +40,16 @@ async def get_current_user_profile(
     return user
 
 
-@router.get("/{user_id}", response_model=UserSearch)
-async def get_user(
-    user_id: str,
+@router.put("/me", response_model=User)
+async def update_current_user(
+    user_data: UserUpdate,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get user profile by ID"""
-    user = await user_service.get_user_by_id(user_id)
+    """Update current user profile"""
+    user = await user_service.update_user(current_user["user_id"], user_data)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    return UserSearch(
-        user_id=user.user_id,
-        username=user.username,
-        avatar_url=user.avatar_url,
-        bio=user.bio,
-        followers_count=user.followers_count
-    )
+    return user
 
 
 @router.get("/search", response_model=List[UserSearch])
@@ -64,6 +70,25 @@ async def search_users(
         )
         for user in users
     ]
+
+
+@router.get("/{user_id}", response_model=UserSearch)
+async def get_user(
+    user_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get user profile by ID"""
+    user = await user_service.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return UserSearch(
+        user_id=user.user_id,
+        username=user.username,
+        avatar_url=user.avatar_url,
+        bio=user.bio,
+        followers_count=user.followers_count
+    )
 
 
 @router.put("/{user_id}", response_model=User)
