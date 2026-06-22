@@ -21,7 +21,7 @@ def test_create_and_get_user_profile(client: TestClient):
         "avatar_url": "http://example.com/avatar.jpg",
         "bio": "I am a test user"
     }
-    response = client.post("/api/users/me", json=payload)
+    response = client.post("/api/users", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["user_id"] == "test_user_123"
@@ -47,7 +47,7 @@ def test_update_user_profile(client: TestClient):
         "email": "test@example.com",
         "bio": "Old bio"
     }
-    client.post("/api/users/me", json=payload)
+    client.post("/api/users", json=payload)
     
     # Update profile
     update_payload = {
@@ -71,7 +71,7 @@ def test_get_user_by_id(client: TestClient):
         "bio": "Alice bio"
     }
     # Create profile (this creates it for test_user_123)
-    client.post("/api/users/me", json=payload)
+    client.post("/api/users", json=payload)
     
     response = client.get("/api/users/test_user_123")
     assert response.status_code == 200
@@ -83,7 +83,7 @@ def test_get_user_by_id(client: TestClient):
 def test_search_users(client: TestClient):
     """Test searching users by username"""
     # 1. Create test_user_123
-    client.post("/api/users/me", json={
+    client.post("/api/users", json={
         "username": "alice_smith",
         "email": "alice@example.com",
         "bio": "Alice bio"
@@ -107,7 +107,7 @@ def test_search_users(client: TestClient):
 def test_follow_and_unfollow_user(client: TestClient):
     """Test following and unfollowing a user"""
     # 1. Create current user profile
-    client.post("/api/users/me", json={
+    client.post("/api/users", json={
         "username": "follower_user",
         "email": "follower@example.com"
     })
@@ -150,3 +150,63 @@ def test_follow_and_unfollow_user(client: TestClient):
     response = client.get("/api/users/target_user_456")
     assert response.status_code == 200
     assert response.json()["followers_count"] == 0
+
+def test_create_profile_deprecated_endpoint(client: TestClient):
+    """Test creating own user profile using the deprecated POST /api/users/me endpoint"""
+    response = client.get("/api/users/me")
+    assert response.status_code == 404
+
+    payload = {
+        "username": "deprecated_tester",
+        "email": "deprecated@example.com",
+        "bio": "Testing deprecated endpoint"
+    }
+    response = client.post("/api/users/me", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == "test_user_123"
+    assert data["username"] == "deprecated_tester"
+
+def test_create_profile_deprecated_endpoint_uses_same_conflict_behavior(client: TestClient):
+    """Deprecated create endpoint should share canonical creation behavior."""
+    payload = {
+        "username": "alias_tester",
+        "email": "alias@example.com",
+        "bio": "Testing deprecated endpoint conflict handling"
+    }
+    response = client.post("/api/users/me", json=payload)
+    assert response.status_code == 200
+
+    response2 = client.post("/api/users/me", json=payload)
+    assert response2.status_code == 400
+    assert response2.json()["detail"] == "User already exists"
+
+def test_create_user_profile_already_exists(client: TestClient):
+    """Test that creating a profile when one already exists returns a 400 Bad Request"""
+    payload = {
+        "username": "tester_1",
+        "email": "tester1@example.com",
+        "bio": "Initial profile"
+    }
+    response = client.post("/api/users", json=payload)
+    assert response.status_code == 200
+
+    # Try creating profile again for the same authenticated user ID
+    response2 = client.post("/api/users", json=payload)
+    assert response2.status_code == 400
+    assert response2.json()["detail"] == "User already exists"
+
+def test_create_user_openapi_marks_only_me_alias_deprecated(client: TestClient):
+    """OpenAPI should show POST /api/users as canonical and POST /api/users/me as deprecated."""
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+
+    paths = response.json()["paths"]
+    create_user = paths["/api/users"]["post"]
+    create_user_me = paths["/api/users/me"]["post"]
+
+    assert create_user.get("deprecated") is not True
+    assert create_user_me["deprecated"] is True
+    assert create_user["responses"]["200"]["content"]["application/json"]["schema"] == (
+        create_user_me["responses"]["200"]["content"]["application/json"]["schema"]
+    )

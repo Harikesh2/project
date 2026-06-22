@@ -41,6 +41,8 @@ docker-compose up --build
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| POST | `/api/users` | Create the authenticated user's profile |
+| POST | `/api/users/me` | Deprecated alias for `POST /api/users` |
 | GET | `/api/users/me` | Current user profile |
 | PUT | `/api/users/me` | Update profile |
 | GET | `/api/users/{user_id}` | User profile |

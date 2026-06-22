@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 def test_create_post(client: TestClient):
     """Test creating a post"""
     # 1. Create the user profile first (needed for posts count and metadata)
-    client.post("/api/users/me", json={
+    client.post("/api/users", json={
         "username": "author_user",
         "email": "author@example.com"
     })
@@ -26,7 +26,7 @@ def test_create_post(client: TestClient):
 
 def test_get_post_by_id(client: TestClient):
     """Test retrieving a post by ID"""
-    client.post("/api/users/me", json={
+    client.post("/api/users", json={
         "username": "author_user",
         "email": "author@example.com"
     })
@@ -46,7 +46,7 @@ def test_get_post_by_id(client: TestClient):
 
 def test_update_and_delete_post(client: TestClient):
     """Test updating and deleting a post"""
-    client.post("/api/users/me", json={
+    client.post("/api/users", json={
         "username": "author_user",
         "email": "author@example.com"
     })
@@ -70,7 +70,7 @@ def test_update_and_delete_post(client: TestClient):
 
 def test_like_and_unlike_post(client: TestClient):
     """Test liking and unliking a post"""
-    client.post("/api/users/me", json={
+    client.post("/api/users", json={
         "username": "author_user",
         "email": "author@example.com"
     })
@@ -98,7 +98,7 @@ def test_like_and_unlike_post(client: TestClient):
 
 def test_get_feed(client: TestClient):
     """Test timelines feed retrieval"""
-    client.post("/api/users/me", json={
+    client.post("/api/users", json={
         "username": "author_user",
         "email": "author@example.com"
     })
@@ -118,7 +118,7 @@ def test_get_feed(client: TestClient):
 
 def test_post_comments(client: TestClient):
     """Test adding, listing and deleting comments on a post"""
-    client.post("/api/users/me", json={
+    client.post("/api/users", json={
         "username": "author_user",
         "email": "author@example.com"
     })

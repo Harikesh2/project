@@ -9,24 +9,56 @@ from app.services.follow_service import follow_service
 router = APIRouter(tags=["users"])
 
 
-@router.post("", response_model=User)
+async def _create_authenticated_user_profile(
+    user_data: UserCreate,
+    current_user: Dict[str, Any]
+) -> User:
+    """Create the profile owned by the authenticated user."""
+    try:
+        return await user_service.create_user(user_data, current_user["user_id"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post(
+    "",
+    response_model=User,
+    summary="Create a new user profile",
+    description=(
+        "Create the profile for the authenticated user. "
+        "Use this canonical endpoint instead of the deprecated POST /api/users/me alias."
+    ),
+    response_description="The created user profile"
+)
 async def create_user(
     user_data: UserCreate,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Create a new user"""
-    user = await user_service.create_user(user_data, current_user["user_id"])
-    return user
+    """
+    Create a new user profile for the authenticated user.
+    
+    This endpoint takes the user details and registers them under the authenticated user's ID.
+    """
+    return await _create_authenticated_user_profile(user_data, current_user)
 
 
-@router.post("/me", response_model=User)
-async def create_current_user_profile(
+@router.post(
+    "/me",
+    response_model=User,
+    summary="Create profile for the current authenticated user (Deprecated)",
+    description=(
+        "Deprecated alias for POST /api/users. It creates the same authenticated user's "
+        "profile and is kept only for backward compatibility."
+    ),
+    deprecated=True,
+    response_description="The created user profile"
+)
+async def create_current_user_profile_deprecated(
     user_data: UserCreate,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Create profile for the current authenticated user"""
-    user = await user_service.create_user(user_data, current_user["user_id"])
-    return user
+    """Deprecated: use POST /api/users to create the authenticated user's profile."""
+    return await _create_authenticated_user_profile(user_data, current_user)
 
 
 @router.get("/me", response_model=User)
