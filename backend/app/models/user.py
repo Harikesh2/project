@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -28,6 +28,14 @@ class User(UserBase):
     followers_count: int = 0
     following_count: int = 0
     posts_count: int = 0
+
+    # DynamoDB stores datetimes as ISO strings; coerce them automatically.
+    @field_validator('created_at', 'updated_at', mode='before')
+    @classmethod
+    def parse_datetime(cls, v):
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
 
     class Config:
         from_attributes = True

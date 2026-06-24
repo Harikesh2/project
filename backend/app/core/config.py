@@ -1,5 +1,6 @@
+# pyrefly: ignore [missing-import]
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
 
 
@@ -11,10 +12,11 @@ class Settings(BaseSettings):
     aws_access_key_id: str
     aws_secret_access_key: str
     aws_region: str = "us-east-1"
-    s3_bucket_name: str = ""
+    aws_session_token: Optional[str] = None
+    s3_bucket_name: str = "socialapp-621541294310-ap-south-1-an"
     
     # DynamoDB Configuration
-    dynamodb_table_prefix: str = "social_media"
+    dynamodb_table_prefix: str = "SocialMedia"
     dynamodb_endpoint_url: str = ""  # Empty for AWS, set for local DynamoDB
     
     # Clerk Authentication Details
@@ -25,26 +27,44 @@ class Settings(BaseSettings):
     cors_origins: List[str] = ["http://localhost:5173"]
     debug: bool = False
     
+    def validate_aws_config(self):
+        """Validate AWS configurations and raise ValueError if invalid"""
+        errors = []
+        if not self.aws_access_key_id or not self.aws_access_key_id.strip():
+            errors.append("AWS_ACCESS_KEY_ID is missing or empty")
+        if not self.aws_secret_access_key or not self.aws_secret_access_key.strip():
+            errors.append("AWS_SECRET_ACCESS_KEY is missing or empty")
+        if not self.aws_region or not self.aws_region.strip():
+            errors.append("AWS_REGION is missing or empty")
+        
+        if errors:
+            raise ValueError(f"AWS Configuration Validation Failed: {', '.join(errors)}")
+
+    
     # Table Names (computed properties)
     @property
     def users_table(self) -> str:
-        return f"{self.dynamodb_table_prefix}_users"
+        return "SocialMedia"
     
     @property
     def posts_table(self) -> str:
-        return f"{self.dynamodb_table_prefix}_posts"
+        return "SocialMedia"
     
     @property
     def follows_table(self) -> str:
-        return f"{self.dynamodb_table_prefix}_follows"
+        return "SocialMedia"
     
     @property
     def likes_table(self) -> str:
-        return f"{self.dynamodb_table_prefix}_likes"
+        return "SocialMedia"
     
     @property
     def comments_table(self) -> str:
-        return f"{self.dynamodb_table_prefix}_comments"
+        return "SocialMedia"
+
+    @property
+    def social_media_table(self) -> str:
+        return "SocialMedia"
 
     class Config:
         # Use an absolute path if possible or ensure it looks in the right place

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 from .user import UserSearch
@@ -26,10 +26,18 @@ class Post(PostBase):
     likes_count: int = 0
     comments_count: int = 0
 
+    # DynamoDB stores datetimes as ISO strings; coerce them automatically.
+    @field_validator('created_at', 'updated_at', mode='before')
+    @classmethod
+    def parse_datetime(cls, v):
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
+
     class Config:
         from_attributes = True
 
 
 class PostWithUser(Post):
     user: UserSearch
-    is_liked: Optional[bool] = None  # Whether current user liked this post
+    is_liked: Optional[bool] = None  # Whether current user liked this post

@@ -28,6 +28,8 @@ class CommentService:
             now = datetime.utcnow().isoformat()
             
             comment_item = {
+                'Pk': f"POST#{post_id}",
+                'Sk': f"COMMENT#{comment_id}",
                 'post_id': post_id,
                 'comment_id': comment_id,
                 'user_id': user_id,
@@ -55,7 +57,7 @@ class CommentService:
             
             try:
                 response = await table.query(
-                    KeyConditionExpression=Key('post_id').eq(post_id),
+                    KeyConditionExpression=Key('Pk').eq(f"POST#{post_id}") & Key('Sk').begins_with("COMMENT#"),
                     ScanIndexForward=True,  # Sort by comment_id ascending (chronological)
                     Limit=limit
                 )
@@ -91,8 +93,8 @@ class CommentService:
             try:
                 response = await table.get_item(
                     Key={
-                        'post_id': post_id,
-                        'comment_id': comment_id
+                        'Pk': f"POST#{post_id}",
+                        'Sk': f"COMMENT#{comment_id}"
                     }
                 )
                 
@@ -105,8 +107,8 @@ class CommentService:
                 # Delete the comment
                 await table.delete_item(
                     Key={
-                        'post_id': post_id,
-                        'comment_id': comment_id
+                        'Pk': f"POST#{post_id}",
+                        'Sk': f"COMMENT#{comment_id}"
                     }
                 )
                 

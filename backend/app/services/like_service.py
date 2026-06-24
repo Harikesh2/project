@@ -20,6 +20,8 @@ class LikeService:
             table = await dynamodb.Table(self.table_name)
             
             like_item = {
+                'Pk': f"POST#{post_id}",
+                'Sk': f"LIKE#{user_id}",
                 'post_id': post_id,
                 'user_id': user_id,
                 'created_at': datetime.utcnow().isoformat()
@@ -28,7 +30,7 @@ class LikeService:
             try:
                 await table.put_item(
                     Item=like_item,
-                    ConditionExpression='attribute_not_exists(post_id) AND attribute_not_exists(user_id)'
+                    ConditionExpression='attribute_not_exists(Pk)'
                 )
                 
                 # Increment post likes count
@@ -51,8 +53,8 @@ class LikeService:
             try:
                 await table.delete_item(
                     Key={
-                        'post_id': post_id,
-                        'user_id': user_id
+                        'Pk': f"POST#{post_id}",
+                        'Sk': f"LIKE#{user_id}"
                     }
                 )
                 
@@ -73,8 +75,8 @@ class LikeService:
             try:
                 response = await table.get_item(
                     Key={
-                        'post_id': post_id,
-                        'user_id': user_id
+                        'Pk': f"POST#{post_id}",
+                        'Sk': f"LIKE#{user_id}"
                     }
                 )
                 return 'Item' in response

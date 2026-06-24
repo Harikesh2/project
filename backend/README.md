@@ -50,3 +50,71 @@ docker-compose up --build
 | POST | `/api/users/{user_id}/follow` | Follow/unfollow |
 
 All protected routes require a valid Clerk JWT token.
+
+## AWS Integration Details
+
+### AWS Setup
+
+Required environment variables in your `.env` file:
+
+```env
+AWS_ACCESS_KEY_ID=your_access_key_id
+AWS_SECRET_ACCESS_KEY=your_secret_access_key
+AWS_REGION=ap-south-1
+```
+
+### Verifying Credentials
+
+To verify your AWS configuration and credentials outside the backend application environment, run the following command in PowerShell:
+
+```powershell
+python -c "import boto3; print(boto3.client('sts').get_caller_identity())"
+```
+
+### Running the Backend
+
+Start the FastAPI application with `uvicorn`:
+
+```powershell
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### AWS Health Check
+
+To inspect the status of the AWS integration, call the following health endpoint:
+
+```http
+GET /health/aws
+```
+
+#### Example Success Response:
+
+```json
+{
+  "status": "ok",
+  "aws": {
+    "account": "123456789012",
+    "arn": "arn:aws:iam::123456789012:user/social-media-app-user",
+    "region": "ap-south-1"
+  }
+}
+```
+
+### Troubleshooting
+
+- **`InvalidClientTokenId` / `Security token included in request is invalid`**
+  - **Reason**: The AWS access key or secret key values in `.env` are malformed or invalid. A common issue is a trailing space or a stale session token (e.g. `AWS_SESSION_TOKEN`) being present in the operating system environment.
+  - **Solution**: Check `.env` values carefully. Run `Remove-Item Env:AWS_SESSION_TOKEN` in PowerShell to clear stale session tokens.
+- **`Missing AWS_REGION`**
+  - **Reason**: The `AWS_REGION` variable is not set or empty in `.env`.
+  - **Solution**: Add `AWS_REGION=ap-south-1` (or your preferred region) to `.env`.
+- **`Missing DynamoDB table`**
+  - **Reason**: The backend attempts to connect to DynamoDB tables that do not exist (e.g., `ResourceNotFoundException`).
+  - **Solution**: Run the setup script `python run_setup.py` to automatically create all required tables.
+- **`AccessDeniedException` / `AccessDenied`**
+  - **Reason**: The IAM user/role associated with the AWS keys does not have permissions to perform required DynamoDB actions (e.g. `GetItem`, `PutItem`, `Query`).
+  - **Solution**: Attach a policy allowing DynamoDB read/write access to the specific tables on the IAM user.
+- **`Credentials changed but server not restarted`**
+  - **Reason**: Uvicorn only loads environment variables from `.env` once on startup. Modifying `.env` while the server is running will not update the credentials.
+  - **Solution**: Stop the server (`Ctrl+C`) and start it again.
+

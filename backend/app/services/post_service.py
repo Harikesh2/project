@@ -1,7 +1,7 @@
 from typing import Optional, List
 from datetime import datetime
 from uuid import uuid4
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 
 from app.database.connection import db_connection
@@ -27,6 +27,8 @@ class PostService:
             now = datetime.utcnow().isoformat()
             
             post_item = {
+                'Pk': f"USER#{user_id}",
+                'Sk': f"POST#{post_id}",
                 'post_id': post_id,
                 'user_id': user_id,
                 'content': post_data.content,
@@ -50,19 +52,21 @@ class PostService:
                 raise
     
     async def get_post_by_id(self, post_id: str) -> Optional[Post]:
-        """Get post by ID"""
+        """Get post by ID using Scan (GSI-independent)"""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
             
             try:
-                response = await table.get_item(Key={'post_id': post_id})
-                if 'Item' in response:
-                    return Post(**response['Item'])
+                response = await table.scan(
+                    FilterExpression=Attr('Sk').eq(f"POST#{post_id}")
+                )
+                if response['Items']:
+                    return Post(**response['Items'][0])
                 return None
                 
             except ClientError as e:
                 logger.error(f"Error getting post {post_id}: {e}")
-                return None
+                raise
     
     async def get_user_posts(self, user_id: str, limit: int = 20, last_key: Optional[str] = None) -> List[PostWithUser]:
         """Get posts by user with pagination"""
@@ -71,14 +75,13 @@ class PostService:
             
             try:
                 query_kwargs = {
-                    'IndexName': 'user_id-created_at-index',
-                    'KeyConditionExpression': Key('user_id').eq(user_id),
-                    'ScanIndexForward': False,  # Sort by created_at descending
+                    'KeyConditionExpression': Key('Pk').eq(f"USER#{user_id}") & Key('Sk').begins_with("POST#"),
+                    'ScanIndexForward': False,
                     'Limit': limit
                 }
                 
                 if last_key:
-                    query_kwargs['ExclusiveStartKey'] = {'user_id': user_id, 'created_at': last_key}
+                    query_kwargs['ExclusiveStartKey'] = {'Pk': f"USER#{user_id}", 'Sk': last_key}
                 
                 response = await table.query(**query_kwargs)
                 
@@ -97,6 +100,8 @@ class PostService:
                         post = Post(**item)
                         posts.append(PostWithUser(**post.dict(), user=user_search))
                 
+                # Sort posts in python since SK is string-ordered and not strictly created_at
+                posts.sort(key=lambda x: x.created_at, reverse=True)
                 return posts
                 
             except ClientError as e:
@@ -127,7 +132,7 @@ class PostService:
             
             try:
                 response = await table.update_item(
-                    Key={'post_id': post_id},
+                    Key={'Pk': f"USER#{user_id}", 'Sk': f"POST#{post_id}"},
                     UpdateExpression=update_expression,
                     ExpressionAttributeValues=expression_values,
                     ReturnValues='ALL_NEW'
@@ -139,7 +144,7 @@ class PostService:
                 
             except ClientError as e:
                 logger.error(f"Error updating post {post_id}: {e}")
-                return None
+                raise
     
     async def delete_post(self, post_id: str, user_id: str) -> bool:
         """Delete a post (only by owner)"""
@@ -152,7 +157,7 @@ class PostService:
                 return False
             
             try:
-                await table.delete_item(Key={'post_id': post_id})
+                await table.delete_item(Key={'Pk': f"USER#{user_id}", 'Sk': f"POST#{post_id}"})
                 
                 # Decrement user's posts count
                 await user_service.increment_posts_count(user_id, -1)
@@ -169,12 +174,8 @@ class PostService:
             table = await dynamodb.Table(self.table_name)
             
             try:
-                # Note: This is a scan operation which is not efficient for large datasets
-                # In production, consider using ElasticSearch or similar for text search
-                # DynamoDB contains is case-sensitive, so we use the query as is.
                 response = await table.scan(
-                    FilterExpression='contains(content, :query)',
-                    ExpressionAttributeValues={':query': query},
+                    FilterExpression=Attr('content').contains(query) & Attr('Sk').begins_with('POST#'),
                     Limit=limit
                 )
                 
@@ -211,31 +212,39 @@ class PostService:
     
     async def increment_likes_count(self, post_id: str, increment: int = 1):
         """Increment likes count"""
+        post = await self.get_post_by_id(post_id)
+        if not post:
+            return
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
             
             try:
                 await table.update_item(
-                    Key={'post_id': post_id},
+                    Key={'Pk': f"USER#{post.user_id}", 'Sk': f"POST#{post_id}"},
                     UpdateExpression='ADD likes_count :inc',
                     ExpressionAttributeValues={':inc': increment}
                 )
             except ClientError as e:
                 logger.error(f"Error updating likes count for {post_id}: {e}")
+                raise
     
     async def increment_comments_count(self, post_id: str, increment: int = 1):
         """Increment comments count"""
+        post = await self.get_post_by_id(post_id)
+        if not post:
+            return
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
             
             try:
                 await table.update_item(
-                    Key={'post_id': post_id},
+                    Key={'Pk': f"USER#{post.user_id}", 'Sk': f"POST#{post_id}"},
                     UpdateExpression='ADD comments_count :inc',
                     ExpressionAttributeValues={':inc': increment}
                 )
             except ClientError as e:
                 logger.error(f"Error updating comments count for {post_id}: {e}")
+                raise
 
 
 # Global service instance

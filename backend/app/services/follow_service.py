@@ -1,6 +1,6 @@
 from typing import List
 from datetime import datetime
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 
 from app.database.connection import db_connection
@@ -26,6 +26,8 @@ class FollowService:
             table = await dynamodb.Table(self.table_name)
             
             follow_item = {
+                'Pk': f"USER#{follower_id}",
+                'Sk': f"FOLLOW#{following_id}",
                 'follower_id': follower_id,
                 'following_id': following_id,
                 'created_at': datetime.utcnow().isoformat()
@@ -34,7 +36,7 @@ class FollowService:
             try:
                 await table.put_item(
                     Item=follow_item,
-                    ConditionExpression='attribute_not_exists(follower_id) AND attribute_not_exists(following_id)'
+                    ConditionExpression='attribute_not_exists(Pk)'
                 )
                 
                 # Update counters
@@ -58,8 +60,8 @@ class FollowService:
             try:
                 await table.delete_item(
                     Key={
-                        'follower_id': follower_id,
-                        'following_id': following_id
+                        'Pk': f"USER#{follower_id}",
+                        'Sk': f"FOLLOW#{following_id}"
                     }
                 )
                 
@@ -81,8 +83,8 @@ class FollowService:
             try:
                 response = await table.get_item(
                     Key={
-                        'follower_id': follower_id,
-                        'following_id': following_id
+                        'Pk': f"USER#{follower_id}",
+                        'Sk': f"FOLLOW#{following_id}"
                     }
                 )
                 return 'Item' in response
@@ -92,14 +94,13 @@ class FollowService:
                 return False
     
     async def get_followers(self, user_id: str, limit: int = 20) -> List[FollowWithUser]:
-        """Get followers of a user"""
+        """Get followers of a user using Scan (GSI-independent)"""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
             
             try:
-                response = await table.query(
-                    IndexName='following_id-follower_id-index',
-                    KeyConditionExpression=Key('following_id').eq(user_id),
+                response = await table.scan(
+                    FilterExpression=Attr('Sk').eq(f"FOLLOW#{user_id}"),
                     Limit=limit
                 )
                 
@@ -132,7 +133,7 @@ class FollowService:
             
             try:
                 response = await table.query(
-                    KeyConditionExpression=Key('follower_id').eq(user_id),
+                    KeyConditionExpression=Key('Pk').eq(f"USER#{user_id}") & Key('Sk').begins_with("FOLLOW#"),
                     Limit=limit
                 )
                 
@@ -165,7 +166,7 @@ class FollowService:
             
             try:
                 response = await table.query(
-                    KeyConditionExpression=Key('follower_id').eq(user_id),
+                    KeyConditionExpression=Key('Pk').eq(f"USER#{user_id}") & Key('Sk').begins_with("FOLLOW#"),
                     ProjectionExpression='following_id'
                 )
                 
