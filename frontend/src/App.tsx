@@ -9,17 +9,31 @@ import PostDetail from '@/pages/PostDetail';
 import Settings from '@/pages/Settings';
 import CreateProfile from '@/pages/CreateProfile';
 
+import { useEffect } from 'react';
+
 function App() {
+  useEffect(() => {
+    // Platform defaults to dark mode unless 'light' is explicitly saved
+    const savedTheme = localStorage.getItem('theme');
+    const isLight = savedTheme === 'light';
+    if (isLight) {
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark'); // Initialize if not set
+    }
+  }, []);
+
   return (
     <>
       <ClerkLoading>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
         </div>
       </ClerkLoading>
-
+ 
       <SignedIn>
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gray-50 dark:bg-slate-950 transition-colors duration-200">
           <Layout>
             <Routes>
               <Route path="/" element={<Home />} />

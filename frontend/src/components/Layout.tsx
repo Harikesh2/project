@@ -35,9 +35,9 @@ export default function Layout({ children, onLogout }: LayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 transition-colors duration-200">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+      <header className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 sticky top-0 z-40 transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
@@ -45,10 +45,10 @@ export default function Layout({ children, onLogout }: LayoutProps) {
               <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-lg">S</span>
               </div>
-              <span className="text-xl font-bold text-gray-900">Social</span>
-              <span className="text-sm bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">DEMO</span>
+              <span className="text-xl font-bold text-gray-900 dark:text-white">Social</span>
+              <span className="text-sm bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 px-2 py-1 rounded-full">DEMO</span>
             </Link>
-
+ 
             {/* Navigation */}
             <nav className="hidden md:flex space-x-8">
               {navigation.map((item) => {
@@ -59,8 +59,8 @@ export default function Layout({ children, onLogout }: LayoutProps) {
                     to={item.href}
                     className={`flex items-center space-x-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                       isActive(item.href)
-                        ? 'text-primary-600 bg-primary-50'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                        ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/50'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800'
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -69,7 +69,7 @@ export default function Layout({ children, onLogout }: LayoutProps) {
                 );
               })}
             </nav>
-
+ 
             {/* Actions */}
             <div className="flex items-center space-x-4">
               <button
@@ -82,7 +82,7 @@ export default function Layout({ children, onLogout }: LayoutProps) {
               
               {/* Demo User Menu */}
               <div className="flex items-center space-x-3">
-                <div className="avatar avatar-sm">
+                <div className="avatar avatar-sm border border-gray-200 dark:border-slate-700">
                   {user?.avatar_url ? (
                     <img
                       src={user.avatar_url}
@@ -90,14 +90,14 @@ export default function Layout({ children, onLogout }: LayoutProps) {
                       className="w-full h-full object-cover rounded-full"
                     />
                   ) : (
-                    <span className="text-gray-600">
+                    <span className="text-gray-600 dark:text-gray-400">
                       {user?.username?.[0]?.toUpperCase() || 'D'}
                     </span>
                   )}
                 </div>
                 <button
                   onClick={onLogout}
-                  className="text-gray-600 hover:text-red-600 transition-colors"
+                  className="text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   title="Logout"
                 >
                   <LogOut className="w-4 h-4" />
@@ -107,9 +107,9 @@ export default function Layout({ children, onLogout }: LayoutProps) {
           </div>
         </div>
       </header>
-
+ 
       {/* Mobile Navigation */}
-      <nav className="md:hidden bg-white border-t border-gray-200 fixed bottom-0 left-0 right-0 z-40">
+      <nav className="md:hidden bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800 fixed bottom-0 left-0 right-0 z-40 transition-colors duration-200">
         <div className="flex justify-around py-2">
           {navigation.map((item) => {
             const Icon = item.icon;
@@ -119,8 +119,8 @@ export default function Layout({ children, onLogout }: LayoutProps) {
                 to={item.href}
                 className={`flex flex-col items-center space-y-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                   isActive(item.href)
-                    ? 'text-primary-600'
-                    : 'text-gray-600'
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-gray-600 dark:text-gray-450 hover:text-gray-900 dark:hover:text-white'
                 }`}
               >
                 <Icon className="w-5 h-5" />
@@ -130,12 +130,12 @@ export default function Layout({ children, onLogout }: LayoutProps) {
           })}
         </div>
       </nav>
-
+ 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-20 md:pb-8">
         {children}
       </main>
-
+ 
       {/* Create Post Modal */}
       {showCreatePost && (
         <CreatePostModal

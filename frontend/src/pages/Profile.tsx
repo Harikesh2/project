@@ -35,8 +35,8 @@ export default function Profile() {
   if (!profile) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">User Not Found</h2>
-        <p className="text-gray-600">The user you're looking for doesn't exist.</p>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">User Not Found</h2>
+        <p className="text-gray-600 dark:text-slate-400">The user you're looking for doesn't exist.</p>
       </div>
     );
   }
@@ -44,10 +44,10 @@ export default function Profile() {
   return (
     <div className="max-w-4xl mx-auto">
       {/* Profile Header */}
-      <div className="card p-8 mb-8">
+      <div className="card p-8 mb-8 transition-colors duration-200">
         <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
           {/* Avatar */}
-          <div className="avatar avatar-xl">
+          <div className="avatar avatar-xl border border-gray-200 dark:border-slate-800">
             {profile.avatar_url ? (
               <img
                 src={profile.avatar_url}
@@ -55,7 +55,7 @@ export default function Profile() {
                 className="w-full h-full object-cover rounded-full"
               />
             ) : (
-              <span className="text-gray-600 text-3xl">
+              <span className="text-gray-600 dark:text-slate-400 text-3xl">
                 {profile.username[0].toUpperCase()}
               </span>
             )}
@@ -65,8 +65,8 @@ export default function Profile() {
           <div className="flex-1">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{profile.username}</h1>
-                <p className="text-gray-600 flex items-center mt-1">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{profile.username}</h1>
+                <p className="text-gray-600 dark:text-slate-400 flex items-center mt-1">
                   <Calendar className="w-4 h-4 mr-1" />
                   Joined {formatDistanceToNow(new Date(profile.created_at), { addSuffix: true })}
                 </p>
@@ -79,7 +79,7 @@ export default function Profile() {
                   disabled={toggleFollow.isPending}
                   className={`btn flex items-center space-x-2 ${
                     profile.is_following
-                      ? 'btn-outline text-red-600 border-red-300 hover:bg-red-50'
+                      ? 'btn-outline text-red-650 dark:text-red-400 border-red-300 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/20'
                       : 'btn-primary'
                   }`}
                 >
@@ -100,22 +100,22 @@ export default function Profile() {
 
             {/* Bio */}
             {profile.bio && (
-              <p className="text-gray-700 mb-4">{profile.bio}</p>
+              <p className="text-gray-700 dark:text-slate-350 mb-4">{profile.bio}</p>
             )}
 
             {/* Stats */}
             <div className="flex items-center space-x-6 text-sm">
               <div className="flex items-center space-x-1">
-                <span className="font-semibold text-gray-900">{profile.posts_count}</span>
-                <span className="text-gray-600">Posts</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{profile.posts_count}</span>
+                <span className="text-gray-600 dark:text-slate-400">Posts</span>
               </div>
               <div className="flex items-center space-x-1">
-                <span className="font-semibold text-gray-900">{profile.followers_count}</span>
-                <span className="text-gray-600">Followers</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{profile.followers_count}</span>
+                <span className="text-gray-600 dark:text-slate-400">Followers</span>
               </div>
               <div className="flex items-center space-x-1">
-                <span className="font-semibold text-gray-900">{profile.following_count}</span>
-                <span className="text-gray-600">Following</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{profile.following_count}</span>
+                <span className="text-gray-600 dark:text-slate-400">Following</span>
               </div>
             </div>
           </div>
@@ -125,7 +125,7 @@ export default function Profile() {
       {/* Posts Section */}
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">Posts</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Posts</h2>
         </div>
 
         {postsLoading ? (
@@ -138,9 +138,9 @@ export default function Profile() {
           ))
         ) : (
           <div className="text-center py-12">
-            <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No posts yet</h3>
-            <p className="text-gray-600">
+            <Users className="w-12 h-12 text-gray-400 dark:text-slate-600 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No posts yet</h3>
+            <p className="text-gray-600 dark:text-slate-400">
               {isOwnProfile 
                 ? "You haven't posted anything yet. Share your first post!"
                 : `${profile.username} hasn't posted anything yet.`

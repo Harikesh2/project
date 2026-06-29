@@ -8,7 +8,30 @@
   }
   
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200;
+  }
+
+  /* Clerk dark fallback overrides */
+  .dark .cl-card,
+  .dark .cl-headerTitle,
+  .dark .cl-headerSubtitle,
+  .dark .cl-socialButtonsBlockButtonText,
+  .dark .cl-formFieldLabel,
+  .dark .cl-formFieldInputShowPasswordButton,
+  .dark .cl-footerActionText,
+  .dark .cl-footerActionLink {
+    color: rgb(241, 245, 249) !important; /* slate-100 */
+  }
+
+  .dark .cl-card {
+    background-color: rgb(15, 23, 42) !important; /* bg-slate-900 */
+    border-color: rgb(30, 41, 59) !important; /* border-slate-800 */
+  }
+
+  .dark .cl-formFieldInput {
+    background-color: rgb(30, 41, 59) !important; /* bg-slate-800 */
+    border-color: rgb(51, 65, 85) !important; /* border-slate-700 */
+    color: rgb(241, 245, 249) !important;
   }
 }
 
@@ -30,15 +53,15 @@
   }
   
   .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
   }
   
   .textarea {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none;
+    @apply w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none;
   }
   
   .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200;
+    @apply bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-slate-800;
   }
   
   .avatar {

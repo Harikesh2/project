@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     aws_session_token: Optional[str] = None
     s3_bucket_name: str = "socialapp-621541294310-ap-south-1-an"
+    s3_aws_access_key_id: Optional[str] = None
+    s3_aws_secret_access_key: Optional[str] = None
     
     # DynamoDB Configuration
     dynamodb_table_prefix: str = "SocialMedia"

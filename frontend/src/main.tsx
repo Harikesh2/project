@@ -27,7 +27,17 @@ const queryClient = new QueryClient({
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+    <ClerkProvider 
+      publishableKey={PUBLISHABLE_KEY}
+      appearance={{
+        layout: {
+          shimmer: true
+        },
+        variables: {
+          colorPrimary: '#2563eb',
+        }
+      }}
+    >
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <App />

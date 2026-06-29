@@ -56,8 +56,8 @@ export default function PostDetail() {
   if (!post) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Post Not Found</h2>
-        <p className="text-gray-600">The post you're looking for doesn't exist.</p>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Post Not Found</h2>
+        <p className="text-gray-600 dark:text-slate-400">The post you're looking for doesn't exist.</p>
       </div>
     );
   }
@@ -68,10 +68,10 @@ export default function PostDetail() {
       <PostCard post={post} />
 
       {/* Comments Section */}
-      <div className="card p-6">
+      <div className="card p-6 transition-colors duration-200">
         <div className="flex items-center space-x-2 mb-6">
-          <MessageCircle className="w-5 h-5 text-gray-600" />
-          <h2 className="text-lg font-semibold text-gray-900">
+          <MessageCircle className="w-5 h-5 text-gray-600 dark:text-slate-400" />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             Comments ({comments?.length || 0})
           </h2>
         </div>
@@ -79,7 +79,7 @@ export default function PostDetail() {
         {/* Add Comment Form */}
         <form onSubmit={handleSubmitComment} className="mb-6">
           <div className="flex space-x-3">
-            <div className="avatar avatar-md">
+            <div className="avatar avatar-md border border-gray-200 dark:border-slate-800">
               {currentUser?.avatar_url ? (
                 <img
                   src={currentUser.avatar_url}
@@ -87,7 +87,7 @@ export default function PostDetail() {
                   className="w-full h-full object-cover rounded-full"
                 />
               ) : (
-                <span className="text-gray-600">
+                <span className="text-gray-600 dark:text-slate-400">
                   {currentUser?.username?.[0]?.toUpperCase() || 'U'}
                 </span>
               )}
@@ -101,7 +101,7 @@ export default function PostDetail() {
                 maxLength={1000}
               />
               <div className="flex justify-between items-center mt-2">
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-500 dark:text-slate-400">
                   {commentContent.length}/1000
                 </span>
                 <button
@@ -127,7 +127,7 @@ export default function PostDetail() {
             {comments.map((comment) => (
               <div key={comment.comment_id} className="flex space-x-3">
                 <Link to={`/profile/${comment.user.user_id}`}>
-                  <div className="avatar avatar-md">
+                  <div className="avatar avatar-md border border-gray-205 dark:border-slate-850">
                     {comment.user.avatar_url ? (
                       <img
                         src={comment.user.avatar_url}
@@ -135,36 +135,36 @@ export default function PostDetail() {
                         className="w-full h-full object-cover rounded-full"
                       />
                     ) : (
-                      <span className="text-gray-600">
+                      <span className="text-gray-600 dark:text-slate-400">
                         {comment.user.username[0].toUpperCase()}
                       </span>
                     )}
                   </div>
                 </Link>
                 <div className="flex-1">
-                  <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="bg-gray-50 dark:bg-slate-800/40 rounded-lg p-3 transition-colors duration-200">
                     <div className="flex items-center justify-between mb-1">
                       <Link
                         to={`/profile/${comment.user.user_id}`}
-                        className="font-medium text-gray-900 hover:text-primary-600 text-sm"
+                        className="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 text-sm"
                       >
                         {comment.user.username}
                       </Link>
                       {currentUser?.user_id === comment.user_id && (
                         <button
                           onClick={() => handleDeleteComment(comment.comment_id)}
-                          className="text-red-600 hover:text-red-700 p-1"
+                          className="text-red-600 hover:text-red-750 p-1"
                           title="Delete comment"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>
-                    <p className="text-gray-900 text-sm whitespace-pre-wrap">
+                    <p className="text-gray-900 dark:text-slate-100 text-sm whitespace-pre-wrap">
                       {comment.content}
                     </p>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1 ml-3">
+                  <p className="text-xs text-gray-500 dark:text-slate-500 mt-1 ml-3">
                     {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
                   </p>
                 </div>
@@ -173,8 +173,8 @@ export default function PostDetail() {
           </div>
         ) : (
           <div className="text-center py-8">
-            <MessageCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-            <p className="text-gray-600">No comments yet. Be the first to comment!</p>
+            <MessageCircle className="w-8 h-8 text-gray-400 dark:text-slate-650 mx-auto mb-2" />
+            <p className="text-gray-600 dark:text-slate-400">No comments yet. Be the first to comment!</p>
           </div>
         )}
       </div>

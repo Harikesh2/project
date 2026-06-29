@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from typing import List, Dict, Any, Optional
 
 from app.auth.clerk import get_current_user
-from app.models.user import User, UserCreate, UserUpdate, UserSearch
+from app.models.user import User, UserCreate, UserUpdate, UserSearch, UserProfile
 from app.services.user_service import user_service
 from app.services.follow_service import follow_service
+from app.services.s3_service import s3_service
 
 import logging
 
@@ -84,6 +85,63 @@ async def get_current_user_profile(
     return user
 
 
+# Bug 3 Fix: Add PUT /me route so frontend's PUT /users/me works
+@router.put("/me", response_model=User)
+async def update_current_user_profile(
+    user_data: UserUpdate,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Update current user's own profile"""
+    user_id = current_user["user_id"]
+    logger.info(f"Updating profile for user_id: {user_id}")
+    user = await user_service.update_user(user_id, user_data)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@router.post("/me/avatar", response_model=User)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Upload a profile avatar image to S3 and update the user record."""
+    user_id = current_user["user_id"]
+
+    ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{file.content_type}'. Allowed: JPEG, PNG, WEBP."
+        )
+
+    MAX_SIZE = 2 * 1024 * 1024  # 2 MB
+    contents = await file.read()
+    if len(contents) > MAX_SIZE:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 2 MB.")
+
+    logger.info(f"Uploading avatar for user_id: {user_id}, file: {file.filename}, size: {len(contents)} bytes")
+
+    try:
+        result = s3_service.upload_file(
+            file_content=contents,
+            file_name=f"avatars/{user_id}/{file.filename or 'avatar'}",
+            content_type=file.content_type,
+        )
+    except Exception as exc:
+        logger.error(f"Avatar S3 upload failed for {user_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to upload avatar. Please try again.")
+
+    avatar_url = result["url"]
+    logger.info(f"Avatar uploaded to S3: {avatar_url}")
+
+    user = await user_service.update_user(user_id, UserUpdate(avatar_url=avatar_url))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    logger.info(f"Avatar updated for user_id: {user_id}")
+    return user
+
 
 # NOTE: /search MUST be declared BEFORE /{user_id} so FastAPI matches it correctly.
 @router.get("/search", response_model=List[UserSearch])
@@ -106,7 +164,8 @@ async def search_users(
     ]
 
 
-@router.get("/{user_id}", response_model=UserSearch)
+# Bug 1 Fix: Return full UserProfile (not UserSearch) with is_following populated
+@router.get("/{user_id}", response_model=UserProfile)
 async def get_user(
     user_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -116,12 +175,27 @@ async def get_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return UserSearch(
+    # Check if current user is following this user
+    current_user_id = current_user["user_id"]
+    is_following = False
+    is_followed_by = False
+    if current_user_id != user_id:
+        is_following = await follow_service.is_following(current_user_id, user_id)
+        is_followed_by = await follow_service.is_following(user_id, current_user_id)
+
+    return UserProfile(
         user_id=user.user_id,
         username=user.username,
+        email=user.email,
         avatar_url=user.avatar_url,
         bio=user.bio,
-        followers_count=user.followers_count
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        followers_count=user.followers_count,
+        following_count=user.following_count,
+        posts_count=user.posts_count,
+        is_following=is_following,
+        is_followed_by=is_followed_by,
     )
 
 
@@ -156,12 +230,13 @@ async def delete_user(
     return {"message": "User deleted successfully"}
 
 
+# Bug 2 Fix: Return {"following": ..., "success": ...} instead of {"followed": ...}
 @router.post("/{user_id}/follow")
 async def follow_user(
     user_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Follow a user"""
+    """Follow or unfollow a user (toggle)"""
     if current_user["user_id"] == user_id:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
 
@@ -170,8 +245,17 @@ async def follow_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    success = await follow_service.follow_user(current_user["user_id"], user_id)
-    return {"followed": success}
+    current_user_id = current_user["user_id"]
+    already_following = await follow_service.is_following(current_user_id, user_id)
+
+    if already_following:
+        # Unfollow
+        await follow_service.unfollow_user(current_user_id, user_id)
+        return {"following": False, "success": True}
+    else:
+        # Follow
+        success = await follow_service.follow_user(current_user_id, user_id)
+        return {"following": success, "success": True}
 
 
 @router.post("/{user_id}/unfollow")

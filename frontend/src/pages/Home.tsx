@@ -33,8 +33,8 @@ export default function Home() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Welcome to Social!</h2>
-          <p className="text-gray-600 mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Welcome to Social!</h2>
+          <p className="text-gray-600 dark:text-slate-400 mb-8">
             Your feed is empty. Start by following some users or create your first post!
           </p>
           <div className="space-y-4">
@@ -53,8 +53,8 @@ export default function Home() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Your Feed</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Your Feed</h1>
+        <p className="text-gray-600 dark:text-slate-400 mt-2">
           Latest posts from people you follow
         </p>
       </div>

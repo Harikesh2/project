@@ -46,7 +46,7 @@ export const usePostService = () => {
         const response = await api.get(`/posts/user/${userId}`);
         return response.data;
       },
-      enabled: !!userId,
+      enabled: !!userId && userId !== 'undefined',
     });
   };
 
@@ -58,7 +58,7 @@ export const usePostService = () => {
         const response = await api.get(`/posts/${postId}`);
         return response.data;
       },
-      enabled: !!postId,
+      enabled: !!postId && postId !== 'undefined',
     });
   };
 
@@ -166,7 +166,7 @@ export const usePostService = () => {
         const response = await api.get(`/posts/${postId}/comments`);
         return response.data;
       },
-      enabled: !!postId,
+      enabled: !!postId && postId !== 'undefined',
     });
   };
 

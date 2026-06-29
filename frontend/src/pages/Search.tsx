@@ -23,13 +23,13 @@ export default function Search() {
   return (
     <div className="max-w-4xl mx-auto">
       {/* Search Header */}
-      <div className="card p-6 mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">Search</h1>
+      <div className="card p-6 mb-8 transition-colors duration-200">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Search</h1>
         
         {/* Search Form */}
         <form onSubmit={handleSearch} className="mb-6">
           <div className="relative">
-            <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-slate-500 w-5 h-5" />
             <input
               type="text"
               value={query}
@@ -39,15 +39,15 @@ export default function Search() {
             />
           </div>
         </form>
-
+ 
         {/* Tabs */}
-        <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+        <div className="flex space-x-1 bg-gray-100 dark:bg-slate-800 rounded-lg p-1 transition-colors duration-200">
           <button
             onClick={() => setActiveTab('users')}
             className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'users'
-                ? 'bg-white text-primary-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
             <Users className="w-4 h-4" />
@@ -57,8 +57,8 @@ export default function Search() {
             onClick={() => setActiveTab('posts')}
             className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'posts'
-                ? 'bg-white text-primary-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
             <FileText className="w-4 h-4" />
@@ -66,20 +66,20 @@ export default function Search() {
           </button>
         </div>
       </div>
-
+ 
       {/* Results */}
       <div className="space-y-6">
         {!query ? (
           <div className="text-center py-12">
-            <SearchIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Start searching</h3>
-            <p className="text-gray-600">
+            <SearchIcon className="w-12 h-12 text-gray-400 dark:text-slate-600 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Start searching</h3>
+            <p className="text-gray-600 dark:text-slate-400">
               Enter a search term to find users or posts
             </p>
           </div>
         ) : activeTab === 'users' ? (
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Users</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Users</h2>
             {usersLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
@@ -87,10 +87,10 @@ export default function Search() {
             ) : users && users.length > 0 ? (
               <div className="space-y-4">
                 {users.map((user) => (
-                  <div key={user.user_id} className="card p-4">
+                  <div key={user.user_id} className="card p-4 transition-colors duration-200">
                     <div className="flex items-center space-x-4">
                       <Link to={`/profile/${user.user_id}`}>
-                        <div className="avatar avatar-md">
+                        <div className="avatar avatar-md border border-gray-200 dark:border-slate-800">
                           {user.avatar_url ? (
                             <img
                               src={user.avatar_url}
@@ -98,7 +98,7 @@ export default function Search() {
                               className="w-full h-full object-cover rounded-full"
                             />
                           ) : (
-                            <span className="text-gray-600">
+                            <span className="text-gray-600 dark:text-slate-400">
                               {user.username[0].toUpperCase()}
                             </span>
                           )}
@@ -107,14 +107,14 @@ export default function Search() {
                       <div className="flex-1">
                         <Link
                           to={`/profile/${user.user_id}`}
-                          className="font-medium text-gray-900 hover:text-primary-600"
+                          className="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400"
                         >
                           {user.username}
                         </Link>
                         {user.bio && (
-                          <p className="text-sm text-gray-600 mt-1">{user.bio}</p>
+                          <p className="text-sm text-gray-600 dark:text-slate-400 mt-1">{user.bio}</p>
                         )}
-                        <p className="text-sm text-gray-500 mt-1">
+                        <p className="text-sm text-gray-500 dark:text-slate-500 mt-1">
                           {user.followers_count} followers
                         </p>
                       </div>
@@ -124,14 +124,14 @@ export default function Search() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">No users found for "{query}"</p>
+                <Users className="w-8 h-8 text-gray-400 dark:text-slate-600 mx-auto mb-2" />
+                <p className="text-gray-600 dark:text-slate-400">No users found for "{query}"</p>
               </div>
             )}
           </div>
         ) : (
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Posts</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Posts</h2>
             {postsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
@@ -144,8 +144,8 @@ export default function Search() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">No posts found for "{query}"</p>
+                <FileText className="w-8 h-8 text-gray-400 dark:text-slate-600 mx-auto mb-2" />
+                <p className="text-gray-600 dark:text-slate-400">No posts found for "{query}"</p>
               </div>
             )}
           </div>

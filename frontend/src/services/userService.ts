@@ -61,7 +61,7 @@ export const useUserService = () => {
         const response = await api.get(`/users/${userId}`);
         return response.data;
       },
-      enabled: !!userId,
+      enabled: !!userId && userId !== 'undefined',
     });
   };
 
@@ -133,7 +133,7 @@ export const useUserService = () => {
         const response = await api.get(`/users/${userId}/followers`);
         return response.data;
       },
-      enabled: !!userId,
+      enabled: !!userId && userId !== 'undefined',
     });
   };
 
@@ -145,7 +145,7 @@ export const useUserService = () => {
         const response = await api.get(`/users/${userId}/following`);
         return response.data;
       },
-      enabled: !!userId,
+      enabled: !!userId && userId !== 'undefined',
     });
   };
 

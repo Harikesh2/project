@@ -2,6 +2,9 @@
 .env
 .env.local
 .env.*.local
+#
+backend/mcp.json
+backend/PROJECT_ANALYSIS.md
 
 # Python virtual environment
 venv/
