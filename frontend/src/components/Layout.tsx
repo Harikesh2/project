@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Search, User, Settings, PlusCircle, LogOut } from 'lucide-react';
+import { useClerk } from '@clerk/clerk-react';
 
 import { useUserService } from '@/services/userService';
 import CreatePostModal from './CreatePostModal';
@@ -8,10 +9,12 @@ import { useState } from 'react';
 
 interface LayoutProps {
   children: ReactNode;
-  onLogout: () => void;
+  onLogout?: () => void;
 }
 
 export default function Layout({ children, onLogout }: LayoutProps) {
+  const { signOut } = useClerk();
+  const handleLogout = onLogout || (() => signOut());
   const location = useLocation();
   const { useCurrentUser } = useUserService();
   const { data: currentUser } = useCurrentUser();
@@ -96,7 +99,7 @@ export default function Layout({ children, onLogout }: LayoutProps) {
                   )}
                 </div>
                 <button
-                  onClick={onLogout}
+                  onClick={handleLogout}
                   className="text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   title="Logout"
                 >

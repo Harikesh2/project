@@ -2,6 +2,17 @@
 
 FastAPI backend with AWS DynamoDB and Clerk authentication.
 
+## Features & Optimizations
+
+- **Security Hardening**:
+  - **S3 Image Upload Auth Guard**: Secured the S3 upload endpoint (`/api/upload-image`) using Clerk authentication validation.
+  - **Endpoint Deregistration**: Safely removed raw, public database read/write `/api/socialmedia` endpoints to eliminate exposure risks.
+- **Database Performance (DynamoDB)**:
+  - **GSI Query Optimizations**: Swapped out table-wide Scan operations in favor of highly optimized GSI queries on `GSI1-post-id-index` (for individual posts) and `GSI3-followers-index` (for follower lists).
+- **Core Platform Features**:
+  - **S3 Profile Avatar Uploads**: Added the `POST /api/users/me/avatar` endpoint to support direct-to-S3 avatar image uploads.
+  - **Flexible Layout Navigation**: Standardized navigation layout components with optional logout functions on the frontend.
+
 ## Prerequisites
 
 - Python 3.11+

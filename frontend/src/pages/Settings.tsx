@@ -1,15 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useUserService } from '@/services/userService';
 
 import AvatarUpload from '@/components/common/AvatarUpload';
+import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { Mail, Save, User as UserIcon, Sun, Moon } from 'lucide-react';
+
+type ModalStep = 'none' | 'confirm' | 'bold';
 
 export default function Settings() {
   const { useCurrentUser, useUpdateProfile } = useUserService();
   const { data: currentUser, isLoading } = useCurrentUser();
   const updateProfile = useUpdateProfile();
 
-  const [formData, setFormData] = useState({
+  const { formData, isDirty, resetOriginal, handleChange } = useDirtyForm({
     username: '',
     bio: '',
   });
@@ -19,15 +23,12 @@ export default function Settings() {
     return saved === 'light' ? 'light' : 'dark';
   });
 
-  // Sync state changes with the DOM element and localStorage
-  const handleThemeChange = (newTheme: 'dark' | 'light') => {
-    if (newTheme === 'light') {
-      const confirmLight = window.confirm("Ah yes, violence against your eyes.");
-      if (!confirmLight) return; // Abort
-      
-      window.alert("😅 Bold choice. Your battery is judging you.");
-    }
-    
+  // Modal two-step state machine: none → confirm → bold → apply
+  const [modalStep, setModalStep] = useState<ModalStep>('none');
+  const lightBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Apply theme to DOM and localStorage
+  const applyTheme = (newTheme: 'dark' | 'light') => {
     setThemeState(newTheme);
     localStorage.setItem('theme', newTheme);
     if (newTheme === 'light') {
@@ -37,35 +38,60 @@ export default function Settings() {
     }
   };
 
+  // Sync state changes with the DOM element and localStorage
+  const handleThemeChange = (newTheme: 'dark' | 'light') => {
+    if (newTheme === 'light') {
+      setModalStep('confirm');
+      return;
+    }
+    applyTheme(newTheme);
+  };
+
+  const handleModalCancel = () => {
+    setModalStep('none');
+  };
+
+  const handleModalConfirm = () => {
+    if (modalStep === 'confirm') {
+      // Move to step 2
+      setModalStep('bold');
+    } else if (modalStep === 'bold') {
+      // Apply light mode and close
+      setModalStep('none');
+      applyTheme('light');
+    }
+  };
+
   // Bug 4 Fix: Use useEffect (not useState) to sync form when user data loads
   useEffect(() => {
     if (currentUser) {
-      setFormData({
+      const values = {
         username: currentUser.username,
         bio: currentUser.bio || '',
-      });
+      };
+      resetOriginal(values);
     }
   }, [currentUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Guard: do nothing if the form hasn't changed
+    if (!isDirty) return;
     
     try {
       await updateProfile.mutateAsync({
         username: formData.username.trim(),
         bio: formData.bio.trim() || undefined,
       });
+      // Reset baseline so button disables again after a successful save
+      resetOriginal();
     } catch (error) {
       // Error is handled by the mutation
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
-  };
+  // handleChange is provided by useDirtyForm
 
   if (isLoading) {
     return (
@@ -107,6 +133,7 @@ export default function Settings() {
                   <span>Dark Mode</span>
                 </button>
                 <button
+                  ref={lightBtnRef}
                   type="button"
                   onClick={() => handleThemeChange('light')}
                   className={`flex items-center justify-center space-x-2 p-3 rounded-xl border font-medium transition-all ${
@@ -192,7 +219,7 @@ export default function Settings() {
             <div className="flex justify-end pt-6 border-t border-gray-200 dark:border-slate-800">
               <button
                 type="submit"
-                disabled={updateProfile.isPending}
+                disabled={!isDirty || updateProfile.isPending}
                 className="btn btn-primary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
@@ -221,6 +248,34 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Step 1: Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={modalStep === 'confirm'}
+        icon="🤔"
+        title="Switch to Light Mode?"
+        description={
+          'Ah yes, violence against your eyes.\nLight mode is bright, bold, and your battery may never forgive you.\n\nAre you absolutely sure you want to continue?'
+        }
+        primaryAction="Yes, I'm Sure"
+        secondaryAction="Cancel"
+        onConfirm={handleModalConfirm}
+        onCancel={handleModalCancel}
+      />
+
+      {/* Step 2: Bold Choice Modal */}
+      <ConfirmationModal
+        isOpen={modalStep === 'bold'}
+        icon="😅"
+        title="Bold Choice"
+        description={
+          'Your battery is officially judging you.\n\nHopefully your eyes survive the experience.'
+        }
+        primaryAction="Continue"
+        onConfirm={handleModalConfirm}
+        onCancel={handleModalCancel}
+        primaryClassName="bg-blue-500 hover:bg-blue-400 text-white shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40"
+      />
     </div>
   );
 }

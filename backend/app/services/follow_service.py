@@ -94,13 +94,14 @@ class FollowService:
                 return False
     
     async def get_followers(self, user_id: str, limit: int = 20) -> List[FollowWithUser]:
-        """Get followers of a user using Scan (GSI-independent)"""
+        """Get followers of a user using GSI3-followers-index"""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
             
             try:
-                response = await table.scan(
-                    FilterExpression=Attr('Sk').eq(f"FOLLOW#{user_id}"),
+                response = await table.query(
+                    IndexName='GSI3-followers-index',
+                    KeyConditionExpression=Key('following_id').eq(user_id),
                     Limit=limit
                 )
                 

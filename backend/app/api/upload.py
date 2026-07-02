@@ -1,5 +1,7 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
 from app.services.s3_service import s3_service
+from app.auth.clerk import get_current_user
+from typing import Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,7 +13,10 @@ ALLOWED_EXTENSIONS = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 @router.post("/upload-image")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(
+    file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     # Validate file type
     if file.content_type not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -34,7 +39,8 @@ async def upload_image(file: UploadFile = File(...)):
         result = s3_service.upload_file(
             file_content=content,
             file_name=file.filename,
-            content_type=file.content_type
+            content_type=file.content_type,
+            user_id=current_user["user_id"]
         )
         
         return {

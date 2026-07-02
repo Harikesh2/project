@@ -27,6 +27,52 @@ async def create_user(
     return user
 
 
+async def _auto_create_user_from_claims(current_user: Dict[str, Any]) -> User:
+    """Helper function to auto-create user in DynamoDB from Clerk JWT claims."""
+    user_id = current_user["user_id"]
+    logger.info(f"User {user_id} not found — auto-creating from Clerk claims.")
+
+    # Build a safe username from whatever Clerk provides.
+    # Clerk 'username' claim is set only if enabled in the Clerk dashboard;
+    # fallback to the first segment of the email, then a short suffix of the user_id.
+    claims = current_user.get("claims", {})
+    raw_username = (
+        current_user.get("username")
+        or claims.get("username")
+        or claims.get("preferred_username")
+    )
+    email = (
+        current_user.get("email")
+        or claims.get("email")
+        or claims.get("email_address")
+        or f"{user_id}@placeholder.local"
+    )
+
+    if not raw_username:
+        # Derive a safe username from the email local-part
+        local_part = email.split("@")[0]
+        # Keep only alphanumeric + underscores, trim to 25 chars
+        safe_local = "".join(c if c.isalnum() or c == "_" else "_" for c in local_part)[:25]
+        raw_username = safe_local or f"user_{user_id[-6:]}"
+
+    # Enforce Pydantic min/max constraints (3–30 chars)
+    username = raw_username[:30]
+    if len(username) < 3:
+        username = f"user_{user_id[-6:]}"
+
+    try:
+        user_data = UserCreate(username=username, email=email)
+        user = await user_service.create_user(user_data, user_id=user_id)
+        logger.info(f"Auto-created user {user_id} with username='{username}'")
+        return user
+    except ValueError:
+        # ConditionalCheckFailedException — race condition, record now exists
+        user = await user_service.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=500, detail="Failed to create or retrieve user record.")
+        return user
+
+
 @router.get("/me", response_model=User)
 async def get_current_user_profile(
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -41,45 +87,7 @@ async def get_current_user_profile(
     user = await user_service.get_user_by_id(user_id)
 
     if not user:
-        logger.info(f"User {user_id} not found — auto-creating from Clerk claims.")
-
-        # Build a safe username from whatever Clerk provides.
-        # Clerk 'username' claim is set only if enabled in the Clerk dashboard;
-        # fallback to the first segment of the email, then a short suffix of the user_id.
-        claims = current_user.get("claims", {})
-        raw_username = (
-            current_user.get("username")
-            or claims.get("username")
-            or claims.get("preferred_username")
-        )
-        email = (
-            current_user.get("email")
-            or claims.get("email")
-            or claims.get("email_address")
-            or f"{user_id}@placeholder.local"
-        )
-
-        if not raw_username:
-            # Derive a safe username from the email local-part
-            local_part = email.split("@")[0]
-            # Keep only alphanumeric + underscores, trim to 25 chars
-            safe_local = "".join(c if c.isalnum() or c == "_" else "_" for c in local_part)[:25]
-            raw_username = safe_local or f"user_{user_id[-6:]}"
-
-        # Enforce Pydantic min/max constraints (3–30 chars)
-        username = raw_username[:30]
-        if len(username) < 3:
-            username = f"user_{user_id[-6:]}"
-
-        try:
-            user_data = UserCreate(username=username, email=email)
-            user = await user_service.create_user(user_data, user_id=user_id)
-            logger.info(f"Auto-created user {user_id} with username='{username}'")
-        except ValueError:
-            # ConditionalCheckFailedException — race condition, record now exists
-            user = await user_service.get_user_by_id(user_id)
-            if not user:
-                raise HTTPException(status_code=500, detail="Failed to create or retrieve user record.")
+        user = await _auto_create_user_from_claims(current_user)
 
     logger.info(f"Returning profile for user_id: {user_id}")
     return user

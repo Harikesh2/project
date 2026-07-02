@@ -2,15 +2,51 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/logo-s.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Social Media App</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      #s-preloader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #020617; /* slate-950 – matches dark app bg */
+        z-index: 9999;
+      }
+      #s-preloader-logo {
+        width: 64px;
+        height: 64px;
+        animation: s-pulse 1.4s ease-in-out infinite;
+        border-radius: 14px;
+        background-color: #2563eb; /* primary-600 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: Inter, Arial, sans-serif;
+        font-size: 36px;
+        font-weight: 700;
+        color: #ffffff;
+        line-height: 1;
+        user-select: none;
+      }
+      @keyframes s-pulse {
+        0%, 100% { transform: scale(1);   opacity: 1;    }
+        50%       { transform: scale(1.15); opacity: 0.75; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Pre-React loading indicator – React overwrites #root on mount -->
+      <div id="s-preloader">
+        <div id="s-preloader-logo">S</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

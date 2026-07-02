@@ -16,7 +16,7 @@ export default function Home() {
 
   // Redirect to profile creation if user doesn't exist
   useEffect(() => {
-    if (!userLoading && !currentUser && error?.response?.status === 404) {
+    if (!userLoading && !currentUser && (error as any)?.response?.status === 404) {
       navigate('/create-profile');
     }
   }, [currentUser, userLoading, error, navigate]);

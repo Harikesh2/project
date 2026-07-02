@@ -52,13 +52,14 @@ class PostService:
                 raise
     
     async def get_post_by_id(self, post_id: str) -> Optional[Post]:
-        """Get post by ID using Scan (GSI-independent)"""
+        """Get post by ID using GSI1-post-id-index"""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
             
             try:
-                response = await table.scan(
-                    FilterExpression=Attr('Sk').eq(f"POST#{post_id}")
+                response = await table.query(
+                    IndexName='GSI1-post-id-index',
+                    KeyConditionExpression=Key('post_id').eq(post_id)
                 )
                 if response['Items']:
                     return Post(**response['Items'][0])

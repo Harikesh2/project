@@ -83,13 +83,14 @@ class UserService:
                 raise
 
     async def get_user_by_username(self, username: str) -> Optional[User]:
-        """Get user by username using Scan with Attr conditions"""
+        """Get user by username using GSI2-username-index"""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
 
             try:
-                response = await table.scan(
-                    FilterExpression=Attr('username').eq(username) & Attr('Sk').eq('METADATA')
+                response = await table.query(
+                    IndexName='GSI2-username-index',
+                    KeyConditionExpression=Key('username').eq(username)
                 )
 
                 if response['Items']:

@@ -16,12 +16,15 @@ class S3Service:
         )
         self.bucket_name = settings.s3_bucket_name
 
-    def upload_file(self, file_content: bytes, file_name: str, content_type: str) -> dict:
+    def upload_file(self, file_content: bytes, file_name: str, content_type: str, user_id: str = None) -> dict:
         """Upload file to S3 and return the URL"""
         try:
             # Generate unique key
             file_extension = file_name.split('.')[-1] if '.' in file_name else ''
-            unique_key = f"uploads/{uuid.uuid4()}.{file_extension}"
+            if user_id:
+                unique_key = f"uploads/{user_id}/{uuid.uuid4()}.{file_extension}"
+            else:
+                unique_key = f"uploads/{uuid.uuid4()}.{file_extension}"
             
             # Upload to S3
             self.s3_client.put_object(

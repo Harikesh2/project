@@ -136,7 +136,7 @@ export const usePostService = () => {
           };
         });
       },
-      onError: (error, postId) => {
+      onError: () => {
         // Revert optimistic update
         queryClient.invalidateQueries({ queryKey: ['posts'] });
         toast.error('Failed to update like status');
@@ -177,7 +177,7 @@ export const usePostService = () => {
         const response = await api.post(`/posts/${postId}/comments`, commentData);
         return response.data;
       },
-      onSuccess: (data, { postId }) => {
+      onSuccess: (_data, { postId }) => {
         // Invalidate comments and update post comments count
         queryClient.invalidateQueries({ queryKey: ['posts', postId, 'comments'] });
         queryClient.invalidateQueries({ queryKey: ['posts', postId] });
@@ -196,7 +196,7 @@ export const usePostService = () => {
       mutationFn: async ({ postId, commentId }: { postId: string; commentId: string }): Promise<void> => {
         await api.delete(`/posts/${postId}/comments/${commentId}`);
       },
-      onSuccess: (data, { postId }) => {
+      onSuccess: (_data, { postId }) => {
         // Invalidate comments and update post comments count
         queryClient.invalidateQueries({ queryKey: ['posts', postId, 'comments'] });
         queryClient.invalidateQueries({ queryKey: ['posts', postId] });

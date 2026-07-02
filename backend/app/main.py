@@ -8,7 +8,7 @@ import logging
 import os
 
 from app.core.config import settings
-from app.api import users, posts, upload, social_media
+from app.api import users, posts, upload
 from app.utils.aws_healthcheck import verify_aws_credentials, AWSValidationError
 
 # Configure logging
@@ -100,7 +100,6 @@ async def botocore_client_error_handler(request: Request, exc: ClientError):
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(posts.router, prefix="/api/posts", tags=["posts"])
 app.include_router(upload.router, prefix="/api", tags=["upload"])
-app.include_router(social_media.router, prefix="/api/socialmedia", tags=["socialmedia"])
 
 @app.get("/")
 async def root():

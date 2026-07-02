@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, MessageCircle, MoreHorizontal, Edit, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Heart, MessageCircle, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 import { PostWithUser } from '@/types';
@@ -41,8 +41,11 @@ export default function PostCard({ post }: PostCardProps) {
     setShowMenu(false);
   };
 
+  const isEditDirty = editedContent.trim() !== post.content || editedImageUrl.trim() !== (post.image_url || '');
+
   const handleUpdate = () => {
     if (editedContent.trim() === '') return;
+    if (!isEditDirty) return;
     updatePost.mutate(
       { 
         postId: post.post_id, 
@@ -171,7 +174,7 @@ export default function PostCard({ post }: PostCardProps) {
               <button
                 onClick={handleUpdate}
                 className="btn btn-primary text-sm px-3 py-1.5"
-                disabled={updatePost.isPending || (editedContent.trim() === post.content && editedImageUrl === (post.image_url || ''))}
+                disabled={updatePost.isPending || !isEditDirty}
               >
                 {updatePost.isPending ? 'Saving...' : 'Save Changes'}
               </button>

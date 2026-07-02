@@ -20,7 +20,7 @@ export default function CreatePostModal({ isOpen, onClose }: CreatePostModalProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!content.trim()) return;
+    if (!content.trim() && !imageUrl.trim()) return;
 
     try {
       await createPost.mutateAsync({

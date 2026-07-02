@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Dict, Any, Optional
 
@@ -36,13 +37,18 @@ async def get_feed(
     if not following_ids:
         return []
     
-    # For simplicity, we'll get recent posts from all followed users
-    # In production, you'd want a more sophisticated feed algorithm
-    all_posts = []
+    # Parallel query recent posts from all followed users
+    tasks = [post_service.get_user_posts(user_id, limit=10) for user_id in following_ids]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     
-    for user_id in following_ids:
-        posts = await post_service.get_user_posts(user_id, limit=10)
-        all_posts.extend(posts)
+    all_posts = []
+    for posts_result in results:
+        if isinstance(posts_result, list):
+            all_posts.extend(posts_result)
+        else:
+            # Log error but don't fail the whole feed
+            import logging
+            logging.getLogger(__name__).error(f"Error fetching posts for user in feed: {posts_result}")
     
     # Sort by created_at descending and limit
     all_posts.sort(key=lambda x: x.created_at, reverse=True)
