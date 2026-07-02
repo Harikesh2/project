@@ -90,20 +90,12 @@ async def get_post(
     # Get user info and create PostWithUser
     from app.services.user_service import user_service
     from app.models.user import UserSearch
-    
+
     user = await user_service.get_user_by_id(post.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Post author not found")
-    
-    user_search = UserSearch(
-        user_id=user.user_id,
-        username=user.username,
-        avatar_url=user.avatar_url,
-        bio=user.bio,
-        followers_count=user.followers_count
-    )
-    
-    return PostWithUser(**post.dict(), user=user_search)
+
+    return PostWithUser.from_post_and_user(post, UserSearch.from_user(user))
 
 
 @router.put("/{post_id}", response_model=Post)

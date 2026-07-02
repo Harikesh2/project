@@ -152,3 +152,73 @@ def test_post_comments(client: TestClient):
     # Verify comments list is now empty
     comments_response = client.get(f"/api/posts/{post_id}/comments")
     assert len(comments_response.json()) == 0
+
+
+def test_legacy_timeline_post_edit_search_like_comments(client: TestClient):
+    """Legacy posts (USER#/POST#{id} only) support get, edit, search, like, and comments."""
+    from datetime import datetime
+    from app.database.connection import db_connection
+    from app.core.config import settings
+
+    client.post("/api/users", json={
+        "username": "legacy_author",
+        "email": "legacy@example.com",
+    })
+
+    post_id = "legacy-post-abc-123"
+    now = datetime.utcnow().isoformat()
+    legacy_item = {
+        "Pk": "USER#test_user_123",
+        "Sk": f"POST#{post_id}",
+        "post_id": post_id,
+        "user_id": "test_user_123",
+        "content": "Legacy searchable post content",
+        "created_at": now,
+        "updated_at": now,
+        "likes_count": 0,
+        "comments_count": 0,
+    }
+
+    table = db_connection.resource.Table(settings.social_media_table)
+    table.put_item(Item=legacy_item)
+
+    # Get by ID (lazy-migrates to POST#/METADATA)
+    get_response = client.get(f"/api/posts/{post_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["content"] == "Legacy searchable post content"
+
+    # Search finds legacy timeline item
+    search_response = client.get("/api/posts/search", params={"q": "Legacy searchable"})
+    assert search_response.status_code == 200
+    assert any(p["post_id"] == post_id for p in search_response.json())
+
+    # Edit
+    update_response = client.put(
+        f"/api/posts/{post_id}",
+        json={"content": "Legacy post updated"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["content"] == "Legacy post updated"
+
+    # Like
+    like_response = client.post(f"/api/posts/{post_id}/like")
+    assert like_response.status_code == 200
+    assert like_response.json()["liked"] is True
+    assert client.get(f"/api/posts/{post_id}").json()["likes_count"] == 1
+
+    # Comment
+    comment_response = client.post(
+        f"/api/posts/{post_id}/comments",
+        json={"content": "Comment on legacy post"},
+    )
+    assert comment_response.status_code == 200
+    comments_response = client.get(f"/api/posts/{post_id}/comments")
+    assert comments_response.status_code == 200
+    assert len(comments_response.json()) == 1
+    assert comments_response.json()[0]["content"] == "Comment on legacy post"
+
+    # Delete
+    delete_response = client.delete(f"/api/posts/{post_id}")
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {"message": "Post deleted successfully"}
+    assert client.get(f"/api/posts/{post_id}").status_code == 404

@@ -9,12 +9,16 @@ def test_health_check(client: TestClient):
     assert response.json() == {"status": "healthy"}
 
 def test_create_and_get_user_profile(client: TestClient):
-    """Test creating and retrieving own user profile"""
-    # 1. Profile should not exist initially
+    """Test auto-create on GET /me, then update profile via PUT /me."""
+    # 1. GET /me auto-creates from Clerk mock claims (single-table METADATA + PROFILE)
     response = client.get("/api/users/me")
-    assert response.status_code == 404
-    
-    # 2. Create profile
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == "test_user_123"
+    assert data["username"] == "test_user"
+    assert data["email"] == "test@example.com"
+
+    # 2. Explicit POST returns 400 because METADATA already exists
     payload = {
         "username": "test_user",
         "email": "test@example.com",
@@ -22,22 +26,30 @@ def test_create_and_get_user_profile(client: TestClient):
         "bio": "I am a test user"
     }
     response = client.post("/api/users", json=payload)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "User already exists"
+
+    # 3. Update profile fields on PROFILE item via PUT /me
+    response = client.put("/api/users/me", json={
+        "avatar_url": "http://example.com/avatar.jpg",
+        "bio": "I am a test user"
+    })
     assert response.status_code == 200
     data = response.json()
     assert data["user_id"] == "test_user_123"
     assert data["username"] == "test_user"
-    assert data["email"] == "test@example.com"
     assert data["avatar_url"] == "http://example.com/avatar.jpg"
     assert data["bio"] == "I am a test user"
     assert data["followers_count"] == 0
     assert data["following_count"] == 0
-    
-    # 3. Retrieve profile again
+
+    # 4. Retrieve profile again
     response = client.get("/api/users/me")
     assert response.status_code == 200
     data = response.json()
     assert data["user_id"] == "test_user_123"
     assert data["username"] == "test_user"
+    assert data["bio"] == "I am a test user"
 
 def test_update_user_profile(client: TestClient):
     """Test updating user profile"""
@@ -124,13 +136,12 @@ def test_follow_and_unfollow_user(client: TestClient):
         )
     
     # Run async function inside test
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(create_target_user())
+    asyncio.run(create_target_user())
     
     # 3. Follow the target user
     response = client.post("/api/users/target_user_456/follow")
     assert response.status_code == 200
-    assert response.json() == {"followed": True}
+    assert response.json() == {"following": True, "success": True}
     
     # Verify follow status / counts
     response = client.get("/api/users/test_user_123")
@@ -153,9 +164,6 @@ def test_follow_and_unfollow_user(client: TestClient):
 
 def test_create_profile_deprecated_endpoint(client: TestClient):
     """Test creating own user profile using the deprecated POST /api/users/me endpoint"""
-    response = client.get("/api/users/me")
-    assert response.status_code == 404
-
     payload = {
         "username": "deprecated_tester",
         "email": "deprecated@example.com",

@@ -1,10 +1,9 @@
 import api from './api';
 
 export interface UploadResponse {
+  message: string;
   url: string;
-  filename: string;
-  content_type: string;
-  size: number;
+  key: string;
 }
 
 export const uploadService = {
@@ -25,8 +24,8 @@ export const uploadService = {
     
     const response = await api.post<UploadResponse>('/upload-image', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
-        'Authorization': `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
+        'Content-Type': undefined,
       },
       onUploadProgress,
     });

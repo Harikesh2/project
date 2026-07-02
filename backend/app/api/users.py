@@ -42,7 +42,7 @@ async def create_user(
     """Create a new user"""
     user_id = current_user["user_id"]
     logger.info(f"User creation requested for user_id: {user_id}")
-    user = await user_service.create_user(user_data, user_id=user_id)
+    user = await _create_authenticated_user_profile(user_data, current_user)
     logger.info(f"Successfully created user entry in database for user_id: {user_id}")
     return user
 
@@ -91,6 +91,22 @@ async def _auto_create_user_from_claims(current_user: Dict[str, Any]) -> User:
         if not user:
             raise HTTPException(status_code=500, detail="Failed to create or retrieve user record.")
         return user
+
+
+@router.post(
+    "/me",
+    response_model=User,
+    deprecated=True,
+    summary="Create user profile (deprecated)",
+    description="Deprecated alias for POST /api/users. Use POST /api/users instead.",
+    response_description="The created user profile",
+)
+async def create_user_me_alias(
+    user_data: UserCreate,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Create a new user via the deprecated /me alias."""
+    return await _create_authenticated_user_profile(user_data, current_user)
 
 
 @router.get("/me", response_model=User)
@@ -153,15 +169,22 @@ async def upload_avatar(
     try:
         result = s3_service.upload_file(
             file_content=contents,
-            file_name=f"avatars/{user_id}/{file.filename or 'avatar'}",
+            file_name=file.filename or "avatar.png",
             content_type=file.content_type,
+            user_id=user_id,
         )
     except Exception as exc:
         logger.error(f"Avatar S3 upload failed for {user_id}: {exc}")
         raise HTTPException(status_code=500, detail="Failed to upload avatar. Please try again.")
+    finally:
+        await file.close()
 
     avatar_url = result["url"]
     logger.info(f"Avatar uploaded to S3: {avatar_url}")
+
+    user = await user_service.get_user_by_id(user_id)
+    if not user:
+        user = await _auto_create_user_from_claims(current_user)
 
     user = await user_service.update_user(user_id, UserUpdate(avatar_url=avatar_url))
     if not user:
@@ -180,16 +203,7 @@ async def search_users(
 ):
     """Search users by username or bio"""
     users = await user_service.search_users(q, limit)
-    return [
-        UserSearch(
-            user_id=user.user_id,
-            username=user.username,
-            avatar_url=user.avatar_url,
-            bio=user.bio,
-            followers_count=user.followers_count
-        )
-        for user in users
-    ]
+    return [UserSearch.from_user(user) for user in users]
 
 
 # Bug 1 Fix: Return full UserProfile (not UserSearch) with is_following populated
@@ -307,16 +321,7 @@ async def get_followers(
 ):
     """Get followers of a user"""
     followers = await follow_service.get_followers(user_id, limit)
-    return [
-        UserSearch(
-            user_id=follower.user_id,
-            username=follower.username,
-            avatar_url=follower.avatar_url,
-            bio=follower.bio,
-            followers_count=follower.followers_count
-        )
-        for follower in followers
-    ]
+    return [UserSearch.from_user(follower) for follower in followers]
 
 
 @router.get("/{user_id}/following", response_model=List[UserSearch])
@@ -327,13 +332,4 @@ async def get_following(
 ):
     """Get users that a user is following"""
     following = await follow_service.get_following(user_id, limit)
-    return [
-        UserSearch(
-            user_id=user.user_id,
-            username=user.username,
-            avatar_url=user.avatar_url,
-            bio=user.bio,
-            followers_count=user.followers_count
-        )
-        for user in following
-    ]
+    return [UserSearch.from_user(user) for user in following]

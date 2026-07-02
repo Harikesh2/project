@@ -26,7 +26,8 @@ def test_upload_image_success(client: TestClient):
         mock_upload.assert_called_once_with(
             file_content=file_content,
             file_name="avatar.png",
-            content_type="image/png"
+            content_type="image/png",
+            user_id="test_user_123",
         )
 
 def test_upload_image_invalid_extension(client: TestClient):
@@ -46,3 +47,29 @@ def test_upload_image_too_large(client: TestClient):
     response = client.post("/api/upload-image", files=files)
     assert response.status_code == 400
     assert "too large" in response.json()["detail"]
+
+
+def test_upload_avatar_success(client: TestClient):
+    """Test avatar upload auto-creates user and stores URL in profile."""
+    with patch("app.api.users.s3_service.upload_file") as mock_upload:
+        mock_upload.return_value = {
+            "url": "https://test-bucket.s3.us-east-1.amazonaws.com/uploads/test_user_123/mock-avatar.png",
+            "key": "uploads/test_user_123/mock-avatar.png",
+        }
+
+        file_content = b"fake avatar data"
+        files = {"file": ("avatar.png", file_content, "image/png")}
+
+        response = client.post("/api/users/me/avatar", files=files)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["user_id"] == "test_user_123"
+        assert data["avatar_url"] == mock_upload.return_value["url"]
+
+        mock_upload.assert_called_once_with(
+            file_content=file_content,
+            file_name="avatar.png",
+            content_type="image/png",
+            user_id="test_user_123",
+        )

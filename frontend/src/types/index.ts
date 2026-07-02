@@ -1,4 +1,6 @@
-// User types
+// User types — API contract (maps to DynamoDB METADATA + PROFILE items on backend)
+// DynamoDB keys: PK=USER#{user_id}, SK=METADATA (core) | PROFILE (avatar_url, bio)
+// GSI1: EMAIL#{email}/USER  |  GSI2: USERNAME#{username}/USER
 export interface User {
   user_id: string;
   username: string;
@@ -38,7 +40,9 @@ export interface UserUpdate {
   bio?: string;
 }
 
-// Post types
+// Post types — API contract (maps to DynamoDB METADATA + timeline duplicate on backend)
+// Canonical: PK=POST#{post_id}, SK=METADATA  |  Timeline: PK=USER#{user_id}, SK=POST#{post_id}
+// GSI3: POSTS / created_at (global feed)
 export interface Post {
   post_id: string;
   user_id: string;
@@ -65,7 +69,9 @@ export interface PostUpdate {
   image_url?: string;
 }
 
-// Comment types
+// Comment types — API contract (maps to DynamoDB canonical + user duplicate on backend)
+// Canonical: PK=POST#{post_id}, SK=COMMENT#{comment_id}
+// User activity: PK=USER#{user_id}, SK=COMMENT#{comment_id}
 export interface Comment {
   comment_id: string;
   post_id: string;
@@ -83,7 +89,9 @@ export interface CommentCreate {
   content: string;
 }
 
-// Follow types
+// Follow types — API contract (maps to duplicated relationship items on backend)
+// Following: PK=USER#{follower_id}, SK=FOLLOWING#{target_id}
+// Followers: PK=USER#{target_id}, SK=FOLLOWER#{follower_id}
 export interface Follow {
   follower_id: string;
   following_id: string;

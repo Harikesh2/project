@@ -6,7 +6,17 @@ from botocore.exceptions import ClientError
 
 from app.database.connection import db_connection
 from app.core.config import settings
-from app.models.post import Post, PostCreate, PostUpdate, PostWithUser
+from app.models.post import (
+    Post,
+    PostCreate,
+    PostUpdate,
+    PostWithUser,
+    PostEntityKeys,
+    PostMetadataRecord,
+    UserTimelinePostRecord,
+    record_to_post,
+    is_legacy_timeline_post,
+)
 from app.models.user import UserSearch
 from app.services.user_service import user_service
 import logging
@@ -17,236 +27,357 @@ logger = logging.getLogger(__name__)
 class PostService:
     def __init__(self):
         self.table_name = settings.posts_table
-    
+
+    async def _find_legacy_timeline_item(self, table, post_id: str) -> Optional[dict]:
+        """Find a legacy USER#/POST#{id} item. Scan Limit applies before filters, so paginate."""
+        timeline_sk = PostEntityKeys.timeline_sk(post_id)
+        filter_expression = Attr("Sk").eq(timeline_sk) & Attr("Pk").begins_with("USER#")
+
+        last_evaluated_key = None
+        while True:
+            scan_kwargs: dict = {"FilterExpression": filter_expression}
+            if last_evaluated_key:
+                scan_kwargs["ExclusiveStartKey"] = last_evaluated_key
+
+            response = await table.scan(**scan_kwargs)
+            items = response.get("Items", [])
+            if items:
+                return items[0]
+
+            last_evaluated_key = response.get("LastEvaluatedKey")
+            if not last_evaluated_key:
+                break
+
+        return None
+
+    async def _get_raw_post_item(self, table, post_id: str) -> Optional[dict]:
+        """Resolve post from canonical METADATA or legacy USER#/POST#{id} timeline item."""
+        response = await table.get_item(Key=PostEntityKeys.metadata_key(post_id))
+        if "Item" in response:
+            return response["Item"]
+
+        return await self._find_legacy_timeline_item(table, post_id)
+
+    async def _ensure_canonical_post(self, table, item: dict) -> None:
+        """Lazy-migrate legacy timeline-only posts to POST#/METADATA."""
+        post_id = item["post_id"]
+        existing = await table.get_item(Key=PostEntityKeys.metadata_key(post_id))
+        if "Item" in existing:
+            return
+
+        metadata = PostMetadataRecord.from_timeline_item(item)
+        await table.put_item(
+            Item=metadata.to_dynamo_item(),
+            ConditionExpression="attribute_not_exists(Sk)",
+        )
+        logger.info(f"Lazy-migrated legacy post {post_id} to canonical METADATA")
+
+    async def _get_existing_post_keys(
+        self, table, post_id: str, user_id: str
+    ) -> List[dict[str, str]]:
+        """Return DynamoDB keys for all post representations that exist."""
+        keys: List[dict[str, str]] = []
+
+        metadata = await table.get_item(Key=PostEntityKeys.metadata_key(post_id))
+        if "Item" in metadata:
+            keys.append(PostEntityKeys.metadata_key(post_id))
+
+        timeline = await table.get_item(Key=PostEntityKeys.timeline_key(user_id, post_id))
+        if "Item" in timeline:
+            keys.append(PostEntityKeys.timeline_key(user_id, post_id))
+
+        return keys
+
+    async def _update_all_post_items(
+        self,
+        table,
+        post_id: str,
+        user_id: str,
+        update_expression: str,
+        expression_values: dict,
+    ):
+        """Update every existing representation (canonical and/or legacy timeline)."""
+        keys = await self._get_existing_post_keys(table, post_id, user_id)
+        if not keys:
+            logger.warning(f"No post keys found to update for post_id={post_id}")
+            return
+
+        for key in keys:
+            await table.update_item(
+                Key=key,
+                UpdateExpression=update_expression,
+                ExpressionAttributeValues=expression_values,
+            )
+
     async def create_post(self, post_data: PostCreate, user_id: str) -> Post:
-        """Create a new post"""
+        """Create canonical METADATA + USER timeline duplicate."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
+
             post_id = str(uuid4())
             now = datetime.utcnow().isoformat()
-            
-            post_item = {
-                'Pk': f"USER#{user_id}",
-                'Sk': f"POST#{post_id}",
-                'post_id': post_id,
-                'user_id': user_id,
-                'content': post_data.content,
-                'image_url': post_data.image_url,
-                'created_at': now,
-                'updated_at': now,
-                'likes_count': 0,
-                'comments_count': 0
-            }
-            
+
+            metadata = PostMetadataRecord.from_create(post_data, post_id, user_id, now)
+            timeline = UserTimelinePostRecord.from_metadata(metadata)
+
             try:
-                await table.put_item(Item=post_item)
-                
-                # Increment user's posts count
+                await table.put_item(
+                    Item=metadata.to_dynamo_item(),
+                    ConditionExpression="attribute_not_exists(Pk) AND attribute_not_exists(Sk)",
+                )
+                await table.put_item(Item=timeline.to_dynamo_item())
                 await user_service.increment_posts_count(user_id)
-                
-                return Post(**post_item)
-                
+                return record_to_post(metadata.to_dynamo_item())
+
             except ClientError as e:
                 logger.error(f"Error creating post: {e}")
                 raise
-    
+
     async def get_post_by_id(self, post_id: str) -> Optional[Post]:
-        """Get post by ID using GSI1-post-id-index"""
+        """Get post by ID; supports legacy timeline-only items with lazy migration."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
+
             try:
-                response = await table.query(
-                    IndexName='GSI1-post-id-index',
-                    KeyConditionExpression=Key('post_id').eq(post_id)
-                )
-                if response['Items']:
-                    return Post(**response['Items'][0])
-                return None
-                
+                item = await self._get_raw_post_item(table, post_id)
+                if not item:
+                    return None
+
+                if is_legacy_timeline_post(item):
+                    await self._ensure_canonical_post(table, item)
+
+                return record_to_post(item)
+
             except ClientError as e:
                 logger.error(f"Error getting post {post_id}: {e}")
                 raise
-    
-    async def get_user_posts(self, user_id: str, limit: int = 20, last_key: Optional[str] = None) -> List[PostWithUser]:
-        """Get posts by user with pagination"""
+
+    async def get_global_feed(self, limit: int = 20, last_key: Optional[dict] = None) -> List[Post]:
+        """Get newest posts globally via GSI3-global-feed-index."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
+
             try:
                 query_kwargs = {
-                    'KeyConditionExpression': Key('Pk').eq(f"USER#{user_id}") & Key('Sk').begins_with("POST#"),
-                    'ScanIndexForward': False,
-                    'Limit': limit
+                    "IndexName": PostEntityKeys.GSI3_INDEX,
+                    "KeyConditionExpression": Key("GSI3PK").eq(PostEntityKeys.GSI3_PK),
+                    "ScanIndexForward": False,
+                    "Limit": limit,
                 }
-                
                 if last_key:
-                    query_kwargs['ExclusiveStartKey'] = {'Pk': f"USER#{user_id}", 'Sk': last_key}
-                
+                    query_kwargs["ExclusiveStartKey"] = last_key
+
                 response = await table.query(**query_kwargs)
-                
-                posts = []
+                return [record_to_post(item) for item in response["Items"]]
+
+            except ClientError as e:
+                logger.error(f"Error getting global feed: {e}")
+                return []
+
+    async def get_user_posts(
+        self, user_id: str, limit: int = 20, last_key: Optional[str] = None
+    ) -> List[PostWithUser]:
+        """Get posts by user via timeline item collection (SK begins_with POST#)."""
+        async with db_connection.get_async_resource() as dynamodb:
+            table = await dynamodb.Table(self.table_name)
+
+            try:
+                query_kwargs = {
+                    "KeyConditionExpression": Key("Pk").eq(f"USER#{user_id}")
+                    & Key("Sk").begins_with("POST#"),
+                    "ScanIndexForward": False,
+                    "Limit": limit,
+                }
+
+                if last_key:
+                    query_kwargs["ExclusiveStartKey"] = {
+                        "Pk": f"USER#{user_id}",
+                        "Sk": last_key,
+                    }
+
+                response = await table.query(**query_kwargs)
+
                 user = await user_service.get_user_by_id(user_id)
-                if user:
-                    user_search = UserSearch(
-                        user_id=user.user_id,
-                        username=user.username,
-                        avatar_url=user.avatar_url,
-                        bio=user.bio,
-                        followers_count=user.followers_count
-                    )
-                    
-                    for item in response['Items']:
-                        post = Post(**item)
-                        posts.append(PostWithUser(**post.dict(), user=user_search))
-                
-                # Sort posts in python since SK is string-ordered and not strictly created_at
+                if not user:
+                    return []
+
+                user_search = UserSearch.from_user(user)
+                posts = [
+                    PostWithUser.from_post_and_user(record_to_post(item), user_search)
+                    for item in response["Items"]
+                ]
                 posts.sort(key=lambda x: x.created_at, reverse=True)
                 return posts
-                
+
             except ClientError as e:
                 logger.error(f"Error getting user posts for {user_id}: {e}")
                 return []
-    
-    async def update_post(self, post_id: str, user_id: str, post_data: PostUpdate) -> Optional[Post]:
-        """Update a post (only by owner)"""
+
+    async def update_post(
+        self, post_id: str, user_id: str, post_data: PostUpdate
+    ) -> Optional[Post]:
+        """Update all existing post representations (canonical and/or legacy)."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
-            # First check if post exists and belongs to user
-            existing_post = await self.get_post_by_id(post_id)
-            if not existing_post or existing_post.user_id != user_id:
+
+            raw_item = await self._get_raw_post_item(table, post_id)
+            if not raw_item or raw_item.get("user_id") != user_id:
                 return None
-            
-            # Build update expression
+
+            if is_legacy_timeline_post(raw_item):
+                await self._ensure_canonical_post(table, raw_item)
+
             update_expression = "SET updated_at = :updated_at"
-            expression_values = {':updated_at': datetime.utcnow().isoformat()}
-            
+            expression_values = {":updated_at": datetime.utcnow().isoformat()}
+
             if post_data.content is not None:
                 update_expression += ", content = :content"
-                expression_values[':content'] = post_data.content
-            
+                expression_values[":content"] = post_data.content
+
             if post_data.image_url is not None:
                 update_expression += ", image_url = :image_url"
-                expression_values[':image_url'] = post_data.image_url
-            
+                expression_values[":image_url"] = post_data.image_url
+
             try:
-                response = await table.update_item(
-                    Key={'Pk': f"USER#{user_id}", 'Sk': f"POST#{post_id}"},
-                    UpdateExpression=update_expression,
-                    ExpressionAttributeValues=expression_values,
-                    ReturnValues='ALL_NEW'
+                await self._update_all_post_items(
+                    table, post_id, user_id, update_expression, expression_values
                 )
-                
-                if 'Attributes' in response:
-                    return Post(**response['Attributes'])
-                return None
-                
+                return await self.get_post_by_id(post_id)
+
             except ClientError as e:
                 logger.error(f"Error updating post {post_id}: {e}")
                 raise
-    
+
     async def delete_post(self, post_id: str, user_id: str) -> bool:
-        """Delete a post (only by owner)"""
+        """Delete all existing post representations."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
-            # First check if post exists and belongs to user
-            existing_post = await self.get_post_by_id(post_id)
-            if not existing_post or existing_post.user_id != user_id:
+
+            raw_item = await self._get_raw_post_item(table, post_id)
+            if not raw_item or raw_item.get("user_id") != user_id:
                 return False
-            
+
             try:
-                await table.delete_item(Key={'Pk': f"USER#{user_id}", 'Sk': f"POST#{post_id}"})
-                
-                # Decrement user's posts count
+                keys = await self._get_existing_post_keys(table, post_id, user_id)
+                if not keys:
+                    keys = [PostEntityKeys.timeline_key(user_id, post_id)]
+
+                for key in keys:
+                    try:
+                        await table.delete_item(Key=key)
+                    except ClientError:
+                        pass
+
                 await user_service.increment_posts_count(user_id, -1)
-                
                 return True
-                
+
             except ClientError as e:
                 logger.error(f"Error deleting post {post_id}: {e}")
                 return False
-    
+
     async def search_posts(self, query: str, limit: int = 20) -> List[PostWithUser]:
-        """Search posts by content"""
+        """Search posts by content on canonical METADATA and legacy timeline items."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
+
             try:
-                response = await table.scan(
-                    FilterExpression=Attr('content').contains(query) & Attr('Sk').begins_with('POST#'),
-                    Limit=limit
+                filter_expression = Attr("content").contains(query) & (
+                    (
+                        Attr("Pk").begins_with(PostEntityKeys.POST_PK_PREFIX)
+                        & Attr("Sk").eq(PostEntityKeys.METADATA_SK)
+                    )
+                    | (
+                        Attr("Pk").begins_with("USER#")
+                        & Attr("Sk").begins_with("POST#")
+                    )
                 )
-                
-                posts = []
-                for item in response['Items']:
-                    # Get user info for each post
-                    user = await user_service.get_user_by_id(item['user_id'])
-                    if user:
-                        user_search = UserSearch(
-                            user_id=user.user_id,
-                            username=user.username,
-                            avatar_url=user.avatar_url,
-                            bio=user.bio,
-                            followers_count=user.followers_count
-                        )
-                        
-                        posts.append(PostWithUser(
-                            post_id=item['post_id'],
-                            user_id=item['user_id'],
-                            content=item['content'],
-                            image_url=item.get('image_url'),
-                            created_at=item['created_at'],
-                            updated_at=item.get('updated_at', item['created_at']),
-                            likes_count=item.get('likes_count', 0),
-                            comments_count=item.get('comments_count', 0),
-                            user=user_search
-                        ))
-                
+
+                seen_ids: set[str] = set()
+                posts: List[PostWithUser] = []
+                last_evaluated_key = None
+
+                while len(posts) < limit:
+                    scan_kwargs: dict = {"FilterExpression": filter_expression}
+                    if last_evaluated_key:
+                        scan_kwargs["ExclusiveStartKey"] = last_evaluated_key
+
+                    response = await table.scan(**scan_kwargs)
+
+                    for item in response.get("Items", []):
+                        post_id = item.get("post_id")
+                        if not post_id or post_id in seen_ids:
+                            continue
+                        seen_ids.add(post_id)
+
+                        user = await user_service.get_user_by_id(item["user_id"])
+                        if user:
+                            posts.append(
+                                PostWithUser.from_post_and_user(
+                                    record_to_post(item), UserSearch.from_user(user)
+                                )
+                            )
+                        if len(posts) >= limit:
+                            break
+
+                    last_evaluated_key = response.get("LastEvaluatedKey")
+                    if not last_evaluated_key:
+                        break
+
                 return posts
-                
+
             except ClientError as e:
                 logger.error(f"Error searching posts: {e}")
                 return []
-    
+
     async def increment_likes_count(self, post_id: str, increment: int = 1):
-        """Increment likes count"""
-        post = await self.get_post_by_id(post_id)
-        if not post:
-            return
+        """Increment likes count on all existing post representations."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
+
+            raw_item = await self._get_raw_post_item(table, post_id)
+            if not raw_item:
+                return
+
+            user_id = raw_item["user_id"]
+            if is_legacy_timeline_post(raw_item):
+                await self._ensure_canonical_post(table, raw_item)
+
             try:
-                await table.update_item(
-                    Key={'Pk': f"USER#{post.user_id}", 'Sk': f"POST#{post_id}"},
-                    UpdateExpression='ADD likes_count :inc',
-                    ExpressionAttributeValues={':inc': increment}
+                await self._update_all_post_items(
+                    table,
+                    post_id,
+                    user_id,
+                    "ADD likes_count :inc",
+                    {":inc": increment},
                 )
             except ClientError as e:
                 logger.error(f"Error updating likes count for {post_id}: {e}")
                 raise
-    
+
     async def increment_comments_count(self, post_id: str, increment: int = 1):
-        """Increment comments count"""
-        post = await self.get_post_by_id(post_id)
-        if not post:
-            return
+        """Increment comments count on all existing post representations."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
+
+            raw_item = await self._get_raw_post_item(table, post_id)
+            if not raw_item:
+                return
+
+            user_id = raw_item["user_id"]
+            if is_legacy_timeline_post(raw_item):
+                await self._ensure_canonical_post(table, raw_item)
+
             try:
-                await table.update_item(
-                    Key={'Pk': f"USER#{post.user_id}", 'Sk': f"POST#{post_id}"},
-                    UpdateExpression='ADD comments_count :inc',
-                    ExpressionAttributeValues={':inc': increment}
+                await self._update_all_post_items(
+                    table,
+                    post_id,
+                    user_id,
+                    "ADD comments_count :inc",
+                    {":inc": increment},
                 )
             except ClientError as e:
                 logger.error(f"Error updating comments count for {post_id}: {e}")
                 raise
 
 
-# Global service instance
 post_service = PostService()

@@ -21,18 +21,23 @@ export const useApi = () => {
           const token = await window.Clerk.session?.getToken();
           if (token) {
             config.headers.Authorization = `Bearer ${token}`;
-            return config;
           }
-        }
-
-        // Fallback to demo token if Clerk is not available (for local testing without internet if needed)
-        const demoToken = localStorage.getItem('demo_token');
-        if (demoToken === 'demo_token_123') {
-          config.headers.Authorization = `Bearer ${demoToken}`;
+        } else {
+          // Fallback to demo token if Clerk is not available (for local testing without internet if needed)
+          const demoToken = localStorage.getItem('demo_token');
+          if (demoToken === 'demo_token_123') {
+            config.headers.Authorization = `Bearer ${demoToken}`;
+          }
         }
       } catch (error) {
         console.error('Error getting auth token:', error);
       }
+
+      // Let axios set multipart boundary when uploading files
+      if (config.data instanceof FormData) {
+        delete config.headers['Content-Type'];
+      }
+
       return config;
     },
     (error) => {

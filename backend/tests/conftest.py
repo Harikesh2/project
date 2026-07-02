@@ -49,15 +49,9 @@ def event_loop():
     loop.close()
 
 def delete_all_tables():
-    """Synchronously delete all test tables"""
+    """Synchronously delete the SocialMedia test table"""
     resource = db_connection.resource
-    table_names = [
-        settings.users_table,
-        settings.posts_table,
-        settings.follows_table,
-        settings.likes_table,
-        settings.comments_table
-    ]
+    table_names = [settings.social_media_table]
     for name in table_names:
         try:
             table = resource.Table(name)
@@ -93,14 +87,8 @@ def setup_db():
 def clear_db():
     """Clear all records from all tables before each test to ensure test isolation"""
     resource = db_connection.resource
-    table_names = [
-        settings.users_table,
-        settings.posts_table,
-        settings.follows_table,
-        settings.likes_table,
-        settings.comments_table
-    ]
-    
+    table_names = [settings.social_media_table]
+
     for name in table_names:
         try:
             table = resource.Table(name)

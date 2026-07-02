@@ -1,9 +1,15 @@
+from typing import List
 from datetime import datetime
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 from app.database.connection import db_connection
 from app.core.config import settings
-from app.models.like import Like
+from app.models.like import (
+    LikeEntityKeys,
+    PostLikeRecord,
+    UserLikeRecord,
+)
 from app.services.post_service import post_service
 import logging
 
@@ -13,78 +19,77 @@ logger = logging.getLogger(__name__)
 class LikeService:
     def __init__(self):
         self.table_name = settings.likes_table
-    
+
     async def like_post(self, post_id: str, user_id: str) -> bool:
-        """Like a post"""
+        """Create duplicated POST like + USER like items."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
-            like_item = {
-                'Pk': f"POST#{post_id}",
-                'Sk': f"LIKE#{user_id}",
-                'post_id': post_id,
-                'user_id': user_id,
-                'created_at': datetime.utcnow().isoformat()
-            }
-            
+            now = datetime.utcnow().isoformat()
+
+            post_like = PostLikeRecord.create(post_id, user_id, now)
+            user_like = UserLikeRecord.create(post_id, user_id, now)
+
             try:
                 await table.put_item(
-                    Item=like_item,
-                    ConditionExpression='attribute_not_exists(Pk)'
+                    Item=post_like.to_dynamo_item(),
+                    ConditionExpression="attribute_not_exists(Sk)",
                 )
-                
-                # Increment post likes count
+                await table.put_item(Item=user_like.to_dynamo_item())
                 await post_service.increment_likes_count(post_id)
-                
                 return True
-                
+
             except ClientError as e:
-                if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-                    # Already liked
+                if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                     return False
                 logger.error(f"Error liking post: {e}")
                 return False
-    
+
     async def unlike_post(self, post_id: str, user_id: str) -> bool:
-        """Unlike a post"""
+        """Delete both POST like and USER like items."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
+
             try:
-                await table.delete_item(
-                    Key={
-                        'Pk': f"POST#{post_id}",
-                        'Sk': f"LIKE#{user_id}"
-                    }
-                )
-                
-                # Decrement post likes count
+                await table.delete_item(Key=LikeEntityKeys.post_like_key(post_id, user_id))
+                await table.delete_item(Key=LikeEntityKeys.user_like_key(user_id, post_id))
                 await post_service.increment_likes_count(post_id, -1)
-                
                 return True
-                
+
             except ClientError as e:
                 logger.error(f"Error unliking post: {e}")
                 return False
-    
+
     async def is_liked(self, post_id: str, user_id: str) -> bool:
-        """Check if user has liked a post"""
+        """Check if like exists on the post partition."""
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
-            
+
             try:
                 response = await table.get_item(
-                    Key={
-                        'Pk': f"POST#{post_id}",
-                        'Sk': f"LIKE#{user_id}"
-                    }
+                    Key=LikeEntityKeys.post_like_key(post_id, user_id)
                 )
-                return 'Item' in response
-                
+                return "Item" in response
+
             except ClientError as e:
                 logger.error(f"Error checking like status: {e}")
                 return False
 
+    async def get_liked_post_ids(self, user_id: str) -> List[str]:
+        """Get post IDs liked by a user via USER#{id}, SK begins_with LIKE#."""
+        async with db_connection.get_async_resource() as dynamodb:
+            table = await dynamodb.Table(self.table_name)
 
-# Global service instance
+            try:
+                response = await table.query(
+                    KeyConditionExpression=Key("Pk").eq(f"USER#{user_id}")
+                    & Key("Sk").begins_with(LikeEntityKeys.LIKE_PREFIX),
+                    ProjectionExpression="post_id",
+                )
+                return [item["post_id"] for item in response["Items"]]
+
+            except ClientError as e:
+                logger.error(f"Error getting liked posts for {user_id}: {e}")
+                return []
+
+
 like_service = LikeService()
