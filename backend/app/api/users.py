@@ -14,7 +14,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
 
 
-@router.post("", response_model=User)
+async def _create_authenticated_user_profile(
+    user_data: UserCreate,
+    current_user: Dict[str, Any]
+) -> User:
+    """Create the profile owned by the authenticated user."""
+    try:
+        return await user_service.create_user(user_data, current_user["user_id"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post(
+    "",
+    response_model=User,
+    summary="Create a new user profile",
+    description=(
+        "Create the profile for the authenticated user. "
+        "Use this canonical endpoint instead of the deprecated POST /api/users/me alias."
+    ),
+    response_description="The created user profile"
+)
 async def create_user(
     user_data: UserCreate,
     current_user: Dict[str, Any] = Depends(get_current_user)
