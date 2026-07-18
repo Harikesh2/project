@@ -8,6 +8,8 @@ import Search from '@/pages/Search';
 import PostDetail from '@/pages/PostDetail';
 import Settings from '@/pages/Settings';
 import CreateProfile from '@/pages/CreateProfile';
+import Chats from '@/pages/Chats';
+import Chat from '@/pages/Chat';
 
 import { useEffect } from 'react';
 
@@ -41,6 +43,8 @@ function App() {
               <Route path="/search" element={<Search />} />
               <Route path="/post/:postId" element={<PostDetail />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/chats" element={<Chats />} />
+              <Route path="/chats/:conversationId" element={<Chat />} />
               <Route path="/create-profile" element={<CreateProfile />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

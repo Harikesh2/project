@@ -10,6 +10,7 @@ backend/PROJECT_ANALYSIS.md
 venv/
 .venv/
 env/
+.claude
 
 # Python bytecode
 __pycache__/

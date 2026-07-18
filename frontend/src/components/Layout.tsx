@@ -1,11 +1,12 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, User, Settings, PlusCircle, LogOut } from 'lucide-react';
+import { Home, Search, Settings, PlusCircle, LogOut, MessageCircle, User } from 'lucide-react';
 import { useClerk } from '@clerk/clerk-react';
 
 import { useUserService } from '@/services/userService';
 import CreatePostModal from './CreatePostModal';
-import { useState } from 'react';
+import ConfirmationModal from '@/components/common/ConfirmationModal';
+import { useState, useRef, useEffect } from 'react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,11 +15,41 @@ interface LayoutProps {
 
 export default function Layout({ children, onLogout }: LayoutProps) {
   const { signOut } = useClerk();
-  const handleLogout = onLogout || (() => signOut());
   const location = useLocation();
   const { useCurrentUser } = useUserService();
   const { data: currentUser } = useCurrentUser();
   const [showCreatePost, setShowCreatePost] = useState(false);
+  const [isAvatarMenuOpen, setIsAvatarMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const avatarButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Close the avatar menu whenever the route changes
+  useEffect(() => {
+    setIsAvatarMenuOpen(false);
+  }, [location.pathname]);
+
+  // Close on Escape and return focus to the trigger button
+  useEffect(() => {
+    if (!isAvatarMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsAvatarMenuOpen(false);
+        avatarButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isAvatarMenuOpen]);
+
+  const handleLogout = onLogout
+    ? () => {
+        setIsAvatarMenuOpen(false);
+        onLogout();
+      }
+    : () => {
+        setIsAvatarMenuOpen(false);
+        signOut();
+      };
 
   // Get demo user if no current user
   const user = currentUser || JSON.parse(localStorage.getItem('demo_user') || '{}');
@@ -26,7 +57,7 @@ export default function Layout({ children, onLogout }: LayoutProps) {
   const navigation = [
     { name: 'Home', href: '/', icon: Home },
     { name: 'Search', href: '/search', icon: Search },
-    { name: 'Profile', href: `/profile/${user?.user_id}`, icon: User },
+    { name: 'Chat', href: '/chats', icon: MessageCircle },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
@@ -84,8 +115,16 @@ export default function Layout({ children, onLogout }: LayoutProps) {
               </button>
               
               {/* Demo User Menu */}
-              <div className="flex items-center space-x-3">
-                <div className="avatar avatar-sm border border-gray-200 dark:border-slate-700">
+              <div className="relative flex items-center space-x-3">
+                <button
+                  ref={avatarButtonRef}
+                  type="button"
+                  onClick={() => setIsAvatarMenuOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={isAvatarMenuOpen}
+                  aria-label="Open user menu"
+                  className="avatar avatar-sm border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded-full"
+                >
                   {user?.avatar_url ? (
                     <img
                       src={user.avatar_url}
@@ -97,14 +136,51 @@ export default function Layout({ children, onLogout }: LayoutProps) {
                       {user?.username?.[0]?.toUpperCase() || 'D'}
                     </span>
                   )}
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                  title="Logout"
-                >
-                  <LogOut className="w-4 h-4" />
                 </button>
+
+                {isAvatarMenuOpen && (
+                  <>
+                    {/* Sibling fixed overlay closes the menu on outside click (PostCard pattern) */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsAvatarMenuOpen(false)}
+                    />
+                    <div
+                      role="menu"
+                      aria-label="User menu"
+                      className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-gray-200 dark:border-slate-800 z-50"
+                    >
+                      <Link
+                        to={`/profile/${user?.user_id}`}
+                        role="menuitem"
+                        className="flex items-center space-x-2 w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 rounded-t-lg"
+                      >
+                        <User className="w-4 h-4" />
+                        <span>View Profile</span>
+                      </Link>
+                      <Link
+                        to="/settings"
+                        role="menuitem"
+                        className="flex items-center space-x-2 w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800"
+                      >
+                        <Settings className="w-4 h-4" />
+                        <span>Account Settings</span>
+                      </Link>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setIsAvatarMenuOpen(false);
+                          setShowLogoutConfirm(true);
+                        }}
+                        className="flex items-center space-x-2 w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-b-lg"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Log Out</span>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -146,6 +222,22 @@ export default function Layout({ children, onLogout }: LayoutProps) {
           onClose={() => setShowCreatePost(false)}
         />
       )}
+
+      {/* Log Out Confirmation */}
+      <ConfirmationModal
+        isOpen={showLogoutConfirm}
+        icon="👋"
+        title="Log out?"
+        description="You'll need to sign back in to view your feed, posts, and messages."
+        primaryAction="Log Out"
+        secondaryAction="Cancel"
+        primaryClassName="bg-red-500 hover:bg-red-400 text-white shadow-lg shadow-red-500/25 hover:shadow-red-500/40"
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          handleLogout();
+        }}
+        onCancel={() => setShowLogoutConfirm(false)}
+      />
     </div>
   );
 }

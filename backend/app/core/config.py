@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     # API Configuration
     cors_origins: List[str] = ["http://localhost:5173"]
     debug: bool = False
+
+    # Chat Configuration
+    chat_max_message_length: int = 5000
+    chat_default_message_limit: int = 50
+    chat_default_conversation_limit: int = 20
+    chat_max_message_limit: int = 100
+    chat_max_conversation_limit: int = 50
     
     def validate_aws_config(self):
         """Validate AWS configurations and raise ValueError if invalid"""
