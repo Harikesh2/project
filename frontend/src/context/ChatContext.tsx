@@ -61,6 +61,9 @@ export function ChatProvider({ conversationId, children }: ChatProviderProps) {
   const { useConversation, useMessages } = useChatService();
   const { useUserProfile, useCurrentUser } = useUserService();
 
+  const { data: currentUser } = useCurrentUser();
+  const currentUserId = currentUser?.user_id;
+
   // 1) ?with= hint, if present
   const withHint = searchParams.get('with') ?? '';
 
@@ -74,9 +77,12 @@ export function ChatProvider({ conversationId, children }: ChatProviderProps) {
     error: conversationError,
   } = useConversation(conversationId);
 
-  // Priority: ?with= > conversation.other_user_id > empty (skip profile fetch).
+  // Priority: ?with= > participant_ids (derive the other user) > empty.
   const resolvedUserId =
-    withHint || (conversation?.other_user_id ?? '');
+    withHint ||
+    (conversation?.participant_ids && currentUserId
+      ? conversation.participant_ids.find((id) => id !== currentUserId) ?? ''
+      : '');
 
   // 3) The chat record may already include rich recipient metadata. If so,
   //    skip the profile fetch to avoid a redundant round-trip. Today this
@@ -119,9 +125,6 @@ export function ChatProvider({ conversationId, children }: ChatProviderProps) {
 
   // --- Phase 2: message thread + send -------------------------------------
 
-  const { data: currentUser } = useCurrentUser();
-  const currentUserId = currentUser?.user_id;
-
   const {
     data: messagesPage,
     isLoading: isLoadingMessages,
@@ -141,10 +144,11 @@ export function ChatProvider({ conversationId, children }: ChatProviderProps) {
   // change (or immediately, since it fires with the current state on attach).
   const [isConnected, setIsConnected] = useState<boolean>(true);
 
-  // Sync fetched history into local state.
+  // Sync fetched history into local state, reversing newest-first API
+  // order to oldest-to-newest for chronological display.
   useEffect(() => {
     if (messagesPage?.items) {
-      setLocalMessages(messagesPage.items);
+      setLocalMessages([...messagesPage.items].reverse());
     }
   }, [messagesPage]);
 
@@ -153,11 +157,17 @@ export function ChatProvider({ conversationId, children }: ChatProviderProps) {
     chatSocket.connect();
     const unsub = chatSocket.subscribe((event) => {
       if (event.type === 'message.created') {
-        setLocalMessages((prev) =>
-          prev.map((m) =>
-            m.client_message_id === event.client_message_id ? event.message : m,
-          ),
-        );
+        setLocalMessages((prev) => {
+          const idx = prev.findIndex(
+            (m) => m.client_message_id === event.client_message_id,
+          );
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = event.message;
+            return next;
+          }
+          return [...prev, event.message];
+        });
       }
       if (event.type === 'error' && event.code === 'SEND_FAILED') {
         const detail = event.detail || 'Failed to send message';

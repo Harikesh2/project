@@ -1,9 +1,15 @@
 import json
 import logging
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.auth.clerk import get_current_websocket_user
-from app.models.chat import IncomingMessageEvent
+from app.models.chat import (
+    IncomingMessageEvent,
+    ContentValidationError,
+    ConversationNotFoundError,
+    NotParticipantError,
+)
 from app.services.chat_service import chat_service
 from app.services.connection_manager import connection_manager
 
@@ -50,11 +56,19 @@ async def chat_websocket(websocket: WebSocket):
                     content=event.content,
                     client_message_id=event.client_message_id,
                 )
-            except ValueError as e:
+            except (ContentValidationError, ConversationNotFoundError, NotParticipantError, ValueError) as e:
                 await websocket.send_json({
                     "type": "error",
                     "code": "SEND_FAILED",
                     "detail": str(e),
+                    "client_message_id": event.client_message_id,
+                })
+                continue
+            except ClientError:
+                await websocket.send_json({
+                    "type": "error",
+                    "code": "SEND_FAILED",
+                    "detail": "Failed to save message. Please try again.",
                     "client_message_id": event.client_message_id,
                 })
                 continue
@@ -63,11 +77,18 @@ async def chat_websocket(websocket: WebSocket):
                 event.conversation_id, user_id
             )
 
+            unread_counts = {}
+            for participant_id in metadata.participant_ids:
+                unread_counts[participant_id] = (
+                    await chat_service.get_unread_count(participant_id)
+                ).count
+
             broadcast = {
                 "type": "message.created",
                 "conversation": metadata.model_dump(),
                 "message": message.model_dump(),
                 "client_message_id": event.client_message_id,
+                "unread_counts": unread_counts,
             }
 
             await connection_manager.send_to_users(metadata.participant_ids, broadcast)

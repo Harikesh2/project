@@ -217,9 +217,10 @@ class UserInboxRecord(BaseModel):
     preview: str
     updated_at: str
     conversation_id: str
+    unread_count: int = 0
 
     def to_dynamo_item(self) -> dict:
-        return self.model_dump(by_alias=True)
+        return self.model_dump(by_alias=True, exclude_none=True)
 
     @classmethod
     def from_dynamo_item(cls, item: dict) -> "UserInboxRecord":
@@ -233,6 +234,7 @@ class UserInboxRecord(BaseModel):
         preview: str,
         updated_at: str,
         conversation_id: str,
+        unread_count: int = 0,
     ) -> "UserInboxRecord":
         return cls(
             Pk=f"USER#{user_id}",
@@ -241,6 +243,7 @@ class UserInboxRecord(BaseModel):
             preview=preview,
             updated_at=updated_at,
             conversation_id=conversation_id,
+            unread_count=unread_count,
         )
 
 
@@ -328,6 +331,12 @@ class MessagePage(BaseModel):
 
     items: list[ChatMessage]
     next_cursor: Optional[str] = None
+
+
+class ChatUnreadCountResponse(BaseModel):
+    """Total unread message count for a user."""
+
+    count: int
 
 
 # ---------------------------------------------------------------------------

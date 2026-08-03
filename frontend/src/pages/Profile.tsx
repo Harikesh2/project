@@ -92,11 +92,7 @@ export default function Profile() {
                   <button
                     onClick={handleFollowToggle}
                     disabled={toggleFollow.isPending}
-                    className={`btn flex items-center space-x-2 ${
-                      profile.is_following
-                        ? 'btn-outline text-red-650 dark:text-red-400 border-red-300 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/20'
-                        : 'btn-primary'
-                    }`}
+                    className="btn btn-primary flex items-center space-x-2"
                   >
                     {profile.is_following ? (
                       <>
@@ -113,7 +109,7 @@ export default function Profile() {
                   <button
                     onClick={handleMessage}
                     disabled={openConversation.isPending}
-                    className="btn btn-outline flex items-center space-x-2"
+                    className="btn btn-primary flex items-center space-x-2"
                   >
                     <MessageSquare className="w-4 h-4" />
                     <span>Message</span>

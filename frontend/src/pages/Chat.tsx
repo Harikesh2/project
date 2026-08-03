@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Loader2, ArrowLeft, MessageSquare } from 'lucide-react';
 
 import { ChatProvider, useChat } from '@/context/ChatContext';
@@ -63,22 +63,33 @@ function ChatView() {
         >
           <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-slate-400" />
         </button>
-        <div className="avatar avatar-sm border border-gray-200 dark:border-slate-700">
-          {recipient?.avatar_url ? (
-            <img
-              src={recipient.avatar_url}
-              alt={recipient.username}
-              className="w-full h-full object-cover rounded-full"
-            />
-          ) : (
-            <span className="text-gray-600 dark:text-gray-400">
-              {recipient?.username?.[0]?.toUpperCase() || '?'}
-            </span>
-          )}
-        </div>
-        <p className="font-semibold text-gray-900 dark:text-white">
-          {recipient?.username || 'Conversation'}
-        </p>
+        {recipient ? (
+          <Link to={`/profile/${recipient.user_id}`} className="flex items-center gap-3">
+            <div className="avatar avatar-sm border border-gray-200 dark:border-slate-700">
+              {recipient.avatar_url ? (
+                <img
+                  src={recipient.avatar_url}
+                  alt={recipient.username}
+                  className="w-full h-full object-cover rounded-full"
+                />
+              ) : (
+                <span className="text-gray-600 dark:text-gray-400">
+                  {recipient.username[0]?.toUpperCase() || '?'}
+                </span>
+              )}
+            </div>
+            <p className="font-semibold text-gray-900 dark:text-white">
+              {recipient.username}
+            </p>
+          </Link>
+        ) : (
+          <>
+            <div className="avatar avatar-sm border border-gray-200 dark:border-slate-700">
+              <span className="text-gray-600 dark:text-gray-400">?</span>
+            </div>
+            <p className="font-semibold text-gray-900 dark:text-white">Conversation</p>
+          </>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 dark:bg-slate-900">

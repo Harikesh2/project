@@ -1,11 +1,14 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   type ReactNode,
 } from 'react';
 
 import { useChatService } from '@/services/chatService';
+import { chatSocket } from '@/services/chatSocket';
+import { useQueryClient } from '@tanstack/react-query';
 import { InboxItem } from '@/types';
 
 // Inbox list lives in its own context, mounted page-level by Chats.tsx.
@@ -35,7 +38,17 @@ interface ChatInboxProviderProps {
 
 export function ChatInboxProvider({ children }: ChatInboxProviderProps) {
   const { useConversations } = useChatService();
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useConversations();
+
+  useEffect(() => {
+    chatSocket.connect();
+    return chatSocket.subscribe((event) => {
+      if (event.type === 'message.created') {
+        queryClient.invalidateQueries({ queryKey: ['chats'] });
+      }
+    });
+  }, [queryClient]);
 
   const conversations = data?.items ?? [];
   const isEmpty = !isLoading && conversations.length === 0;

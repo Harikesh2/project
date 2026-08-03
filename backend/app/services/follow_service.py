@@ -15,6 +15,7 @@ from app.models.follow import (
 )
 from app.models.user import UserSearch
 from app.services.user_service import user_service
+from app.services.notification_service import notification_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,28 @@ class FollowService:
 
                 await user_service.increment_following_count(follower_id)
                 await user_service.increment_followers_count(following_id)
+
+                # Notification: follower_id != following_id by guard above
+                try:
+                    actor = await user_service.get_user_by_id(follower_id)
+                    if actor:
+                        payload = {
+                            "actor_username": actor.username,
+                            "actor_avatar_url": actor.avatar_url,
+                        }
+                        await notification_service.create_notification(
+                            recipient_id=following_id,
+                            actor_id=follower_id,
+                            type_="follow",
+                            entity_id=follower_id,
+                            entity_type="user",
+                            payload=payload,
+                        )
+                except Exception:
+                    logger.warning(
+                        f"Failed to send follow notification {follower_id}->{following_id}",
+                        exc_info=True,
+                    )
 
                 return True
 

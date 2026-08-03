@@ -20,6 +20,7 @@ from app.models.chat import (
     ChatMessage,
     ConversationPage,
     MessagePage,
+    ChatUnreadCountResponse,
     encode_cursor,
     decode_cursor,
     SelfChatError,
@@ -90,6 +91,59 @@ class ChatService:
                 last_key = response.get("LastEvaluatedKey")
                 if not last_key:
                     return None
+
+    async def _get_inbox_unread(
+        self, user_id: str, updated_at: str, conversation_id: str
+    ) -> int:
+        """Read the current unread_count for a user's inbox row (0 if missing)."""
+        async with db_connection.get_async_resource() as dynamodb:
+            table = await dynamodb.Table(self.table_name)
+            response = await table.get_item(
+                Key=ChatEntityKeys.inbox_key(user_id, updated_at, conversation_id),
+                ProjectionExpression="unread_count",
+            )
+            item = response.get("Item")
+            return int(item.get("unread_count", 0)) if item else 0
+
+    async def _mark_conversation_read(
+        self, user_id: str, conversation_id: str
+    ) -> None:
+        """Zero a single user's unread count for a conversation."""
+        metadata = await self._get_metadata(conversation_id)
+        if metadata is None:
+            return
+        async with db_connection.get_async_resource() as dynamodb:
+            table = await dynamodb.Table(self.table_name)
+            key = ChatEntityKeys.inbox_key(user_id, metadata.updated_at, conversation_id)
+            await table.update_item(
+                Key=key,
+                UpdateExpression="SET unread_count = :zero",
+                ExpressionAttributeValues={":zero": 0},
+            )
+
+    async def get_unread_count(self, user_id: str) -> ChatUnreadCountResponse:
+        """Total unread messages across all of a user's conversations."""
+        async with db_connection.get_async_resource() as dynamodb:
+            table = await dynamodb.Table(self.table_name)
+            total = 0
+            last_key = None
+            kwargs = {
+                "KeyConditionExpression": Key("Pk").eq(f"USER#{user_id}")
+                & Key("Sk").begins_with("CHAT#"),
+                "ProjectionExpression": "unread_count",
+            }
+            while True:
+                if last_key:
+                    kwargs["ExclusiveStartKey"] = last_key
+                response = await table.query(**kwargs)
+                total += sum(
+                    item.get("unread_count", 0)
+                    for item in response.get("Items", [])
+                )
+                last_key = response.get("LastEvaluatedKey")
+                if not last_key:
+                    break
+            return ChatUnreadCountResponse(count=total)
 
     async def get_or_create_direct_conversation(
         self, current_user_id: str, recipient_id: str
@@ -232,7 +286,14 @@ class ChatService:
                     other_user_search = UserSearch.from_user(other_user)
                 return ConversationWithUser.from_metadata_and_user(metadata, other_user_search)
 
-            items = await asyncio.gather(*[enrich(record) for record in inbox_records])
+            results = await asyncio.gather(
+                *[enrich(record) for record in inbox_records],
+                return_exceptions=True,
+            )
+            items = [r for r in results if isinstance(r, ConversationWithUser)]
+            for r in results:
+                if isinstance(r, Exception):
+                    logger.warning("Skipped inbox record: %s", r)
 
             next_cursor = None
             if "LastEvaluatedKey" in response:
@@ -253,6 +314,9 @@ class ChatService:
 
         limit = limit or settings.chat_default_message_limit
         limit = min(limit, settings.chat_max_message_limit)
+
+        # Opening the conversation clears its unread badge.
+        await self._mark_conversation_read(user_id, conversation_id)
 
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
@@ -312,6 +376,11 @@ class ChatService:
             message_id = str(uuid.uuid4())
             other_user_id = [p for p in metadata.participant_ids if p != sender_id][0]
 
+            recipient_unread = await self._get_inbox_unread(
+                other_user_id, metadata.updated_at, conversation_id
+            )
+            recipient_unread += 1
+
             message = ChatMessageRecord.create(
                 conversation_id=conversation_id,
                 message_id=message_id,
@@ -341,6 +410,7 @@ class ChatService:
                 preview=trimmed,
                 updated_at=now,
                 conversation_id=conversation_id,
+                unread_count=recipient_unread,
             )
 
             try:

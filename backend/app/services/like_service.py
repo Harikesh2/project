@@ -11,6 +11,8 @@ from app.models.like import (
     UserLikeRecord,
 )
 from app.services.post_service import post_service
+from app.services.user_service import user_service
+from app.services.notification_service import notification_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,29 @@ class LikeService:
                 )
                 await table.put_item(Item=user_like.to_dynamo_item())
                 await post_service.increment_likes_count(post_id)
+
+                # Notification: skip self-likes
+                try:
+                    post = await post_service.get_post_by_id(post_id)
+                    if post and post.user_id != user_id:
+                        actor = await user_service.get_user_by_id(user_id)
+                        if actor:
+                            payload = {
+                                "actor_username": actor.username,
+                                "actor_avatar_url": actor.avatar_url,
+                                "preview": post.content[:100],
+                            }
+                            await notification_service.create_notification(
+                                recipient_id=post.user_id,
+                                actor_id=user_id,
+                                type_="like",
+                                entity_id=post_id,
+                                entity_type="post",
+                                payload=payload,
+                            )
+                except Exception:
+                    logger.warning(f"Failed to send like notification for post {post_id}", exc_info=True)
+
                 return True
 
             except ClientError as e:

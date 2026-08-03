@@ -212,3 +212,42 @@ export interface ChatErrorEvent {
 
 // Union type for all incoming WebSocket events
 export type ChatWsEvent = ChatReadyEvent | ChatMessageCreatedEvent | ChatErrorEvent;
+
+// Notification types — matches backend Notification API response
+// DynamoDB: PK=NOTIFICATION#{id}, SK=METADATA (canonical)
+//           PK=USER#{recipient_id}, SK=NOTIFICATION#{created_at}#{id} (user list)
+export type NotificationType = "like" | "follow" | "comment";
+
+export interface Notification {
+  id: string;
+  recipient_id: string;
+  actor_id: string;
+  type: NotificationType;
+  entity_id: string;
+  entity_type: string;
+  payload: {
+    actor_username: string;
+    actor_avatar_url?: string;
+    preview?: string;
+  };
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface NotificationListResponse {
+  items: Notification[];
+  next_token: string | null;
+}
+
+export interface UnreadCountResponse {
+  count: number;
+}
+
+// WebSocket event — incoming notification.created
+export interface NotificationCreatedEvent {
+  type: "notification.created";
+  notification: Notification;
+}
+
+// Union type for all notification WebSocket events
+export type NotificationWsEvent = NotificationCreatedEvent;

@@ -10,6 +10,7 @@ import Settings from '@/pages/Settings';
 import CreateProfile from '@/pages/CreateProfile';
 import Chats from '@/pages/Chats';
 import Chat from '@/pages/Chat';
+import Notifications from '@/pages/Notifications';
 
 import { useEffect } from 'react';
 
@@ -45,6 +46,7 @@ function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/chats" element={<Chats />} />
               <Route path="/chats/:conversationId" element={<Chat />} />
+              <Route path="/notifications" element={<Notifications />} />
               <Route path="/create-profile" element={<CreateProfile />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

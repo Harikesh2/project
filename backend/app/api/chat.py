@@ -9,6 +9,7 @@ from app.models.chat import (
     Conversation,
     ConversationPage,
     MessagePage,
+    ChatUnreadCountResponse,
     SelfChatError,
     RecipientNotFoundError,
     ConversationNotFoundError,
@@ -67,6 +68,14 @@ async def list_conversations(
         raise _map_chat_error(exc)
 
 
+@router.get("/unread-count", response_model=ChatUnreadCountResponse)
+async def get_unread_count(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Total unread messages across all conversations (badge count)."""
+    return await chat_service.get_unread_count(current_user["user_id"])
+
+
 @router.get("/{conversation_id}/messages", response_model=MessagePage)
 async def get_messages(
     conversation_id: str,
@@ -80,4 +89,19 @@ async def get_messages(
             conversation_id, current_user["user_id"], limit, cursor
         )
     except (ConversationNotFoundError, NotParticipantError, InvalidCursorError) as exc:
+        raise _map_chat_error(exc)
+
+
+@router.get("/{conversation_id}", response_model=Conversation)
+async def get_conversation(
+    conversation_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Get conversation metadata (members only)."""
+    try:
+        metadata = await chat_service.get_conversation_for_member(
+            conversation_id, current_user["user_id"]
+        )
+        return Conversation.from_metadata(metadata)
+    except (ConversationNotFoundError, NotParticipantError) as exc:
         raise _map_chat_error(exc)

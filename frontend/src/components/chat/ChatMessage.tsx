@@ -21,7 +21,7 @@ export default function ChatMessage({ msg, currentUserId }: ChatMessageProps) {
       >
         <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
         <p className={`text-xs mt-1 flex items-center gap-1 ${isMine ? 'text-primary-200' : 'text-gray-500 dark:text-slate-400'}`}>
-          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {new Date(msg.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
           {isPending && <Loader2 className="w-3 h-3 animate-spin" />}
           {isMine && !isPending && <CheckCheck className="w-3 h-3" />}
         </p>

@@ -1,9 +1,11 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, Settings, PlusCircle, LogOut, MessageCircle, User } from 'lucide-react';
+import { Home, Search, Settings, Bell, PlusCircle, LogOut, MessageCircle, User } from 'lucide-react';
 import { useClerk } from '@clerk/clerk-react';
 
 import { useUserService } from '@/services/userService';
+import { useNotificationService, useNotificationWs } from '@/services/notificationService';
+import { useChatService, useChatWs } from '@/services/chatService';
 import CreatePostModal from './CreatePostModal';
 import ConfirmationModal from '@/components/common/ConfirmationModal';
 import { useState, useRef, useEffect } from 'react';
@@ -18,6 +20,11 @@ export default function Layout({ children, onLogout }: LayoutProps) {
   const location = useLocation();
   const { useCurrentUser } = useUserService();
   const { data: currentUser } = useCurrentUser();
+  const { useUnreadCount } = useNotificationService();
+  const { data: unreadCount } = useUnreadCount();
+  useNotificationWs();
+  const { useChatUnreadCount } = useChatService();
+  const { data: chatUnreadCount } = useChatUnreadCount();
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [isAvatarMenuOpen, setIsAvatarMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -54,11 +61,13 @@ export default function Layout({ children, onLogout }: LayoutProps) {
   // Get demo user if no current user
   const user = currentUser || JSON.parse(localStorage.getItem('demo_user') || '{}');
 
+  useChatWs(user?.user_id);
+
   const navigation = [
     { name: 'Home', href: '/', icon: Home },
     { name: 'Search', href: '/search', icon: Search },
     { name: 'Chat', href: '/chats', icon: MessageCircle },
-    { name: 'Settings', href: '/settings', icon: Settings },
+    { name: 'Notifications', href: '/notifications', icon: Bell },
   ];
 
   const isActive = (href: string) => {
@@ -97,13 +106,25 @@ export default function Layout({ children, onLogout }: LayoutProps) {
                         : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
-                    <span>{item.name}</span>
+                    <span className="relative">
+                      <Icon className="w-4 h-4" />
+                      {item.name === 'Notifications' && !isActive('/notifications') && (unreadCount?.count ?? 0) > 0 && (
+                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[11px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none shadow-sm ring-2 ring-white dark:ring-slate-900">
+                          {(unreadCount?.count ?? 0) > 9 ? '9+' : (unreadCount?.count ?? 0)}
+                        </span>
+                      )}
+                      {item.name === 'Chat' && !isActive('/chats') && (chatUnreadCount?.count ?? 0) > 0 && (
+                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[11px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none shadow-sm ring-2 ring-white dark:ring-slate-900">
+                          {(chatUnreadCount?.count ?? 0) > 9 ? '9+' : (chatUnreadCount?.count ?? 0)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="ml-1.5">{item.name}</span>
                   </Link>
                 );
               })}
             </nav>
- 
+
             {/* Actions */}
             <div className="flex items-center space-x-4">
               <button
@@ -191,21 +212,33 @@ export default function Layout({ children, onLogout }: LayoutProps) {
       <nav className="md:hidden bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800 fixed bottom-0 left-0 right-0 z-40 transition-colors duration-200">
         <div className="flex justify-around py-2">
           {navigation.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.name}
-                to={item.href}
-                className={`flex flex-col items-center space-y-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                  isActive(item.href)
-                    ? 'text-primary-600 dark:text-primary-400'
-                    : 'text-gray-600 dark:text-gray-450 hover:text-gray-900 dark:hover:text-white'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span>{item.name}</span>
-              </Link>
-            );
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={`flex flex-col items-center space-y-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      isActive(item.href)
+                        ? 'text-primary-600 dark:text-primary-400'
+                        : 'text-gray-600 dark:text-gray-450 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <span className="relative">
+                      <Icon className="w-5 h-5" />
+                      {item.name === 'Notifications' && !isActive('/notifications') && (unreadCount?.count ?? 0) > 0 && (
+                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[11px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none shadow-sm ring-2 ring-white dark:ring-slate-900">
+                          {(unreadCount?.count ?? 0) > 9 ? '9+' : (unreadCount?.count ?? 0)}
+                        </span>
+                      )}
+                      {item.name === 'Chat' && !isActive('/chats') && (chatUnreadCount?.count ?? 0) > 0 && (
+                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[11px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none shadow-sm ring-2 ring-white dark:ring-slate-900">
+                          {(chatUnreadCount?.count ?? 0) > 9 ? '9+' : (chatUnreadCount?.count ?? 0)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5">{item.name}</span>
+                  </Link>
+                );
           })}
         </div>
       </nav>
