@@ -12,8 +12,10 @@ def test_build_conversation_id():
 
     # Deterministic check
     assert id_1 == id_2
-    assert id_1.startswith("DM#")
-    assert len(id_1) > 3
+    # Bare SHA-256 hex digest (no prefix) — the old "DM#" prefix broke
+    # frontend URL routing because the browser strips "#..." fragments.
+    assert len(id_1) == 64
+    assert id_1.isalnum()
 
 
 def test_chat_entity_keys():

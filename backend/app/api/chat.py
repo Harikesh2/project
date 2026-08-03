@@ -10,6 +10,7 @@ from app.models.chat import (
     ConversationPage,
     MessagePage,
     ChatUnreadCountResponse,
+    ChatError,
     SelfChatError,
     RecipientNotFoundError,
     ConversationNotFoundError,
