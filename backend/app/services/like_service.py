@@ -11,8 +11,7 @@ from app.models.like import (
     UserLikeRecord,
 )
 from app.services.post_service import post_service
-from app.services.user_service import user_service
-from app.services.notification_service import notification_service
+from app.services.notification_service import maybe_notify
 import logging
 
 logger = logging.getLogger(__name__)
@@ -42,22 +41,15 @@ class LikeService:
                 # Notification: skip self-likes
                 try:
                     post = await post_service.get_post_by_id(post_id)
-                    if post and post.user_id != user_id:
-                        actor = await user_service.get_user_by_id(user_id)
-                        if actor:
-                            payload = {
-                                "actor_username": actor.username,
-                                "actor_avatar_url": actor.avatar_url,
-                                "preview": post.content[:100],
-                            }
-                            await notification_service.create_notification(
-                                recipient_id=post.user_id,
-                                actor_id=user_id,
-                                type_="like",
-                                entity_id=post_id,
-                                entity_type="post",
-                                payload=payload,
-                            )
+                    if post:
+                        await maybe_notify(
+                            actor_id=user_id,
+                            recipient_id=post.user_id,
+                            type_="like",
+                            entity_id=post_id,
+                            entity_type="post",
+                            preview=post.content[:100],
+                        )
                 except Exception:
                     logger.warning(f"Failed to send like notification for post {post_id}", exc_info=True)
 

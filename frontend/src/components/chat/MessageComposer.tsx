@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Send, Loader2, WifiOff } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 
 const MAX_LENGTH = 5000;
 

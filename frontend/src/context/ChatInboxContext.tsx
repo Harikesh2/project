@@ -7,7 +7,7 @@ import {
 } from 'react';
 
 import { useChatService } from '@/services/chatService';
-import { chatSocket } from '@/services/chatSocket';
+import { chatSocket } from '@/services/reconnectingSocket';
 import { useQueryClient } from '@tanstack/react-query';
 import { InboxItem } from '@/types';
 

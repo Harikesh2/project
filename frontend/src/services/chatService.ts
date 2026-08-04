@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from './api';
 import { Conversation, InboxItem, ChatMessage, CursorPage, UnreadCountResponse } from '@/types';
-import { chatSocket } from './chatSocket';
+import { chatSocket } from './reconnectingSocket';
 import toast from 'react-hot-toast';
 
 export const useChatService = () => {

@@ -17,8 +17,49 @@ from app.models.notification import (
     NotificationListResponse,
 )
 from app.services.connection_manager import connection_manager
+from app.services.user_service import user_service
 
 logger = logging.getLogger(__name__)
+
+
+async def maybe_notify(
+    actor_id: str,
+    recipient_id: str,
+    type_: str,
+    entity_id: str,
+    entity_type: str,
+    preview: Optional[str] = None,
+) -> Optional[Notification]:
+    """Fire a notification unless the actor is the recipient. Never raises.
+
+    Shared by like / comment / follow services; swallows failures so a
+    notification outage never breaks the underlying action.
+    """
+    try:
+        if not recipient_id or recipient_id == actor_id:
+            return None
+        actor = await user_service.get_user_by_id(actor_id)
+        if not actor:
+            return None
+        payload = {
+            "actor_username": actor.username,
+            "actor_avatar_url": actor.avatar_url,
+            **({"preview": preview} if preview else {}),
+        }
+        return await notification_service.create_notification(
+            recipient_id=recipient_id,
+            actor_id=actor_id,
+            type_=type_,
+            entity_id=entity_id,
+            entity_type=entity_type,
+            payload=payload,
+        )
+    except Exception:
+        logger.warning(
+            f"Failed to send {type_} notification {actor_id}->{recipient_id}",
+            exc_info=True,
+        )
+        return None
 
 
 class NotificationService:
@@ -211,22 +252,22 @@ class NotificationService:
                     items.extend(resp.get("Items", []))
                     last_key = resp.get("LastEvaluatedKey")
 
-                update_expr = "SET read_at = :now"
-                expr_vals = {":now": now}
+                if not items:
+                    return True
 
-                for item in items:
-                    # User list item
-                    await table.update_item(
-                        Key={"Pk": item["Pk"], "Sk": item["Sk"]},
-                        UpdateExpression=update_expr,
-                        ExpressionAttributeValues=expr_vals,
-                    )
-                    # Canonical item
-                    await table.update_item(
-                        Key=NotificationEntityKeys.metadata_key(item["notification_id"]),
-                        UpdateExpression=update_expr,
-                        ExpressionAttributeValues=expr_vals,
-                    )
+                # Single batch-write pass (auto-batches at 25, retries
+                # unprocessed) rewrites user-list items with read_at set and
+                # rebuilds canonical items from the same full item data.
+                async with table.batch_writer() as batch:
+                    for item in items:
+                        item["read_at"] = now
+                        await batch.put_item(Item=item)
+                        canonical = {
+                            **item,
+                            "Pk": NotificationEntityKeys.pk(item["notification_id"]),
+                            "Sk": NotificationEntityKeys.METADATA_SK,
+                        }
+                        await batch.put_item(Item=canonical)
 
                 return True
 

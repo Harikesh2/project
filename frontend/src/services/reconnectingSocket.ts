@@ -1,26 +1,22 @@
-import { ChatSendEvent, ChatWsEvent } from '@/types';
-
-type EventCallback = (event: ChatWsEvent) => void;
+import { ChatSendEvent, ChatWsEvent, NotificationWsEvent } from '@/types';
 
 // Coarse lifecycle states. Subscribers (e.g. ChatContext → MessageComposer) use
-// this to render "Connecting…" / "Offline" pills and to gate the Send button.
-// 'idle' is the post-disconnect, pre-connect state. 'connecting' covers both
-// the initial handshake and exponential-backoff retries.
+// this to render "Connecting…" / "Offline" pills and to gate interactive
+// controls. 'idle' is the post-disconnect, pre-connect state. 'connecting'
+// covers both the initial handshake and exponential-backoff retries.
 export type ConnectionState = 'idle' | 'connecting' | 'open' | 'closed';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-function getWsBaseUrl(): string {
-  if (API_BASE_URL.startsWith('https://')) {
-    return API_BASE_URL.replace(/^https/, 'wss') + '/ws/chat';
-  }
-  return API_BASE_URL.replace(/^http/, 'ws') + '/ws/chat';
+function getWsUrl(path: string): string {
+  const scheme = API_BASE_URL.startsWith('https://') ? 'wss' : 'ws';
+  return `${API_BASE_URL.replace(/^https?/, scheme)}${path}`;
 }
 
 async function getToken(): Promise<string | null> {
   if (window.Clerk) {
     try {
-      return await window.Clerk.session?.getToken() || null;
+      return (await window.Clerk.session?.getToken()) || null;
     } catch {
       return null;
     }
@@ -29,19 +25,27 @@ async function getToken(): Promise<string | null> {
   return demoToken === 'demo_token_123' ? demoToken : null;
 }
 
-class ChatSocketService {
+export interface ReconnectingSocketConfig<TOut> {
+  path: string;
+  // Chat-specific: buffer outgoing events while the socket is down and drain
+  // them on reopen. When the buffer is full the oldest event is dropped and
+  // onOverflow is called with it.
+  outbox?: boolean;
+  onOverflow?: (dropped: TOut) => void;
+}
+
+export class ReconnectingSocket<TIn, TOut> {
   private ws: WebSocket | null = null;
-  private listeners: Set<EventCallback> = new Set();
-  private connectionListeners: Set<(state: ConnectionState) => void> = new Set();
+  private listeners = new Set<(event: TIn) => void>();
+  private connectionListeners = new Set<(state: ConnectionState) => void>();
   private state: ConnectionState = 'idle';
   private shouldReconnect = false;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  // Buffer of events that arrived before the socket opened (or while it was
-  // briefly down). Drained in onopen so sends submitted during the connect
-  // race are not silently dropped.
-  private outbox: ChatSendEvent[] = [];
+  private outbox: TOut[] = [];
   private static readonly MAX_OUTBOX = 100;
+
+  constructor(private readonly config: ReconnectingSocketConfig<TOut>) {}
 
   private setState(next: ConnectionState): void {
     if (this.state === next) return;
@@ -50,11 +54,10 @@ class ChatSocketService {
   }
 
   private get backoffDelay(): number {
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-    return delay + Math.random() * 1000;
+    return Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000) + Math.random() * 1000;
   }
 
-  subscribe(cb: EventCallback): () => void {
+  subscribe(cb: (event: TIn) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
   }
@@ -67,8 +70,8 @@ class ChatSocketService {
     return () => this.connectionListeners.delete(cb);
   }
 
-  private notify(event: ChatWsEvent): void {
-    this.listeners.forEach(cb => cb(event));
+  dispatch(event: TIn): void {
+    for (const cb of this.listeners) cb(event);
   }
 
   async connect(): Promise<void> {
@@ -90,7 +93,7 @@ class ChatSocketService {
       return;
     }
 
-    const url = `${getWsBaseUrl()}?token=${encodeURIComponent(token)}`;
+    const url = `${getWsUrl(this.config.path)}?token=${encodeURIComponent(token)}`;
     this.ws = new WebSocket(url);
     this.setState('connecting');
 
@@ -98,19 +101,20 @@ class ChatSocketService {
       this.setState('open');
       this.reconnectAttempts = 0;
       // Drain any events that were queued while the socket was connecting.
-      const pending = this.outbox;
-      this.outbox = [];
-      for (const ev of pending) {
-        if (this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify(ev));
+      if (this.config.outbox) {
+        const pending = this.outbox;
+        this.outbox = [];
+        for (const ev of pending) {
+          if (this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(ev));
+          }
         }
       }
     };
 
     this.ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data) as ChatWsEvent;
-        this.notify(data);
+        this.dispatch(JSON.parse(event.data) as TIn);
       } catch {
         // ignore malformed messages
       }
@@ -137,22 +141,19 @@ class ChatSocketService {
     this.reconnectTimer = setTimeout(() => this.doConnect(), this.backoffDelay);
   }
 
-  send(event: ChatSendEvent): void {
+  send(event: TOut): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(event));
       return;
     }
+    if (!this.config.outbox) return;
     // Socket isn't open yet (e.g. user hit Enter within the first ~100ms of
     // navigation, before onopen fires). Queue the event; onopen will drain.
-    if (this.outbox.length >= ChatSocketService.MAX_OUTBOX) {
+    if (this.outbox.length >= ReconnectingSocket.MAX_OUTBOX) {
       // Drop the oldest to make room, and surface a toast-equivalent so the
       // user has a chance to notice the queue is overwhelmed.
       this.outbox.shift();
-      this.notify({
-        type: 'error',
-        code: 'SEND_FAILED',
-        detail: 'Send queue full; oldest message dropped',
-      });
+      this.config.onOverflow?.(event);
     }
     this.outbox.push(event);
   }
@@ -176,4 +177,17 @@ class ChatSocketService {
   }
 }
 
-export const chatSocket = new ChatSocketService();
+export const chatSocket = new ReconnectingSocket<ChatWsEvent, ChatSendEvent>({
+  path: '/ws/chat',
+  outbox: true,
+  onOverflow: () =>
+    chatSocket.dispatch({
+      type: 'error',
+      code: 'SEND_FAILED',
+      detail: 'Send queue full; oldest message dropped',
+    }),
+});
+
+export const notificationSocket = new ReconnectingSocket<NotificationWsEvent, never>({
+  path: '/ws/notifications',
+});

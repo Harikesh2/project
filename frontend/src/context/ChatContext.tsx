@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 
 import { useChatService } from '@/services/chatService';
 import { useUserService } from '@/services/userService';
-import { chatSocket } from '@/services/chatSocket';
+import { chatSocket } from '@/services/reconnectingSocket';
 import { ChatMessage } from '@/types';
 
 export interface ChatRecipient {

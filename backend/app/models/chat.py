@@ -207,16 +207,27 @@ class ChatMessageRecord(BaseModel):
 
 
 class UserInboxRecord(BaseModel):
-    """Inbox projection for a user: PK=USER#{user_id}, SK=CHAT#{updated_at}#{conversation_id}."""
+    """Inbox projection for a user: PK=USER#{user_id}, SK=CHAT#{updated_at}#{conversation_id}.
+
+    Fully denormalized so ``list_conversations`` can render each row with a
+    single partition query: it carries the canonical conversation fields
+    (participant_ids, created_at), the latest message (preview, last_message_at),
+    and the other participant's public card (id/username/avatar).
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
     pk: str = Field(alias="Pk")
     sk: str = Field(alias="Sk")
     other_user_id: str
+    other_username: str
+    other_avatar_url: Optional[str] = None
     preview: str
     updated_at: str
     conversation_id: str
+    participant_ids: list[str]
+    created_at: str
+    last_message_at: Optional[str] = None
     unread_count: int = 0
 
     def to_dynamo_item(self) -> dict:
@@ -230,19 +241,27 @@ class UserInboxRecord(BaseModel):
     def create(
         cls,
         user_id: str,
-        other_user_id: str,
+        other_user: UserSearch,
         preview: str,
         updated_at: str,
         conversation_id: str,
+        participant_ids: list[str],
+        created_at: str,
+        last_message_at: Optional[str] = None,
         unread_count: int = 0,
     ) -> "UserInboxRecord":
         return cls(
             Pk=f"USER#{user_id}",
             Sk=ChatEntityKeys.inbox_sk(updated_at, conversation_id),
-            other_user_id=other_user_id,
+            other_user_id=other_user.user_id,
+            other_username=other_user.username,
+            other_avatar_url=other_user.avatar_url,
             preview=preview,
             updated_at=updated_at,
             conversation_id=conversation_id,
+            participant_ids=participant_ids,
+            created_at=created_at,
+            last_message_at=last_message_at,
             unread_count=unread_count,
         )
 
@@ -285,17 +304,19 @@ class ConversationWithUser(BaseModel):
     other_user: UserSearch
 
     @classmethod
-    def from_metadata_and_user(
-        cls, metadata: ConversationMetadataRecord, other_user: UserSearch
-    ) -> "ConversationWithUser":
+    def from_inbox_record(cls, record: UserInboxRecord) -> "ConversationWithUser":
         return cls(
-            conversation_id=metadata.conversation_id,
-            participant_ids=metadata.participant_ids,
-            created_at=metadata.created_at,
-            updated_at=metadata.updated_at,
-            last_message_preview=metadata.last_message_preview,
-            last_message_at=metadata.last_message_at,
-            other_user=other_user,
+            conversation_id=record.conversation_id,
+            participant_ids=record.participant_ids,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            last_message_preview=record.preview or None,
+            last_message_at=record.last_message_at,
+            other_user=UserSearch(
+                user_id=record.other_user_id,
+                username=record.other_username,
+                avatar_url=record.other_avatar_url,
+            ),
         )
 
 

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -6,6 +5,7 @@ from typing import Optional
 
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
+from pydantic import ValidationError
 
 from app.database.connection import db_connection
 from app.core.config import settings
@@ -154,6 +154,7 @@ class ChatService:
         recipient = await user_service.get_user_by_id(recipient_id)
         if not recipient:
             raise RecipientNotFoundError("Recipient not found")
+        current_user = await user_service.get_user_by_id(current_user_id)
 
         conversation_id = build_conversation_id(current_user_id, recipient_id)
 
@@ -178,20 +179,27 @@ class ChatService:
                 updated_at=now,
             )
 
+            self_card = UserSearch.from_user(current_user) if current_user else UserSearch(user_id=current_user_id, username="Unknown", avatar_url=None)
+            other_card = UserSearch.from_user(recipient)
+
             inbox_self = UserInboxRecord.create(
                 user_id=current_user_id,
-                other_user_id=recipient_id,
+                other_user=other_card,
                 preview="",
                 updated_at=now,
                 conversation_id=conversation_id,
+                participant_ids=participant_ids,
+                created_at=now,
             )
 
             inbox_other = UserInboxRecord.create(
                 user_id=recipient_id,
-                other_user_id=current_user_id,
+                other_user=self_card,
                 preview="",
                 updated_at=now,
                 conversation_id=conversation_id,
+                participant_ids=participant_ids,
+                created_at=now,
             )
 
             try:
@@ -257,43 +265,20 @@ class ChatService:
 
             response = await table.query(**kwargs)
 
-            inbox_records = [
-                UserInboxRecord.from_dynamo_item(item)
-                for item in response.get("Items", [])
+            inbox_records = []
+            for item in response.get("Items", []):
+                try:
+                    inbox_records.append(UserInboxRecord.from_dynamo_item(item))
+                except ValidationError:
+                    # Stale rows from the pre-refactor schema are dropped so
+                    # one bad row can't break the whole list. They are rebuilt
+                    # on the next message send.
+                    logger.warning("Skipping stale inbox row: %s", item.get("Sk"))
+
+            items = [
+                ConversationWithUser.from_inbox_record(record)
+                for record in inbox_records
             ]
-
-            # Resolve metadata and other-user profiles concurrently. Each inbox
-            # row is a projection; the canonical metadata and public user card
-            # are fetched so the client can render without extra requests.
-            async def enrich(record: UserInboxRecord) -> ConversationWithUser:
-                metadata = await self._get_metadata(record.conversation_id)
-                if metadata is None:
-                    # Projection exists but metadata is missing; treat as not found.
-                    raise ConversationNotFoundError(
-                        f"Conversation {record.conversation_id} not found"
-                    )
-                other_user = await user_service.get_user_by_id(record.other_user_id)
-                if other_user is None:
-                    # Fall back to a minimal UserSearch if the user was deleted.
-                    other_user_search = UserSearch(
-                        user_id=record.other_user_id,
-                        username="Unknown",
-                        avatar_url=None,
-                        bio=None,
-                        followers_count=0,
-                    )
-                else:
-                    other_user_search = UserSearch.from_user(other_user)
-                return ConversationWithUser.from_metadata_and_user(metadata, other_user_search)
-
-            results = await asyncio.gather(
-                *[enrich(record) for record in inbox_records],
-                return_exceptions=True,
-            )
-            items = [r for r in results if isinstance(r, ConversationWithUser)]
-            for r in results:
-                if isinstance(r, Exception):
-                    logger.warning("Skipped inbox record: %s", r)
 
             next_cursor = None
             if "LastEvaluatedKey" in response:
@@ -376,6 +361,11 @@ class ChatService:
             message_id = str(uuid.uuid4())
             other_user_id = [p for p in metadata.participant_ids if p != sender_id][0]
 
+            sender = await user_service.get_user_by_id(sender_id)
+            other_user = await user_service.get_user_by_id(other_user_id)
+            sender_card = UserSearch.from_user(sender) if sender else UserSearch(user_id=sender_id, username="Unknown", avatar_url=None)
+            other_card = UserSearch.from_user(other_user) if other_user else UserSearch(user_id=other_user_id, username="Unknown", avatar_url=None)
+
             recipient_unread = await self._get_inbox_unread(
                 other_user_id, metadata.updated_at, conversation_id
             )
@@ -399,17 +389,23 @@ class ChatService:
 
             new_inbox_self = UserInboxRecord.create(
                 user_id=sender_id,
-                other_user_id=other_user_id,
+                other_user=other_card,
                 preview=trimmed,
                 updated_at=now,
                 conversation_id=conversation_id,
+                participant_ids=metadata.participant_ids,
+                created_at=metadata.created_at,
+                last_message_at=now,
             )
             new_inbox_other = UserInboxRecord.create(
                 user_id=other_user_id,
-                other_user_id=sender_id,
+                other_user=sender_card,
                 preview=trimmed,
                 updated_at=now,
                 conversation_id=conversation_id,
+                participant_ids=metadata.participant_ids,
+                created_at=metadata.created_at,
+                last_message_at=now,
                 unread_count=recipient_unread,
             )
 
