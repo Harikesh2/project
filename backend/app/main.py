@@ -8,7 +8,7 @@ import logging
 import os
 
 from app.core.config import settings
-from app.api import users, posts, upload
+from app.api import users, posts, upload, chat, chat_websocket, notifications, notification_ws
 from app.utils.aws_healthcheck import verify_aws_credentials, AWSValidationError
 
 # Configure logging
@@ -100,6 +100,10 @@ async def botocore_client_error_handler(request: Request, exc: ClientError):
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(posts.router, prefix="/api/posts", tags=["posts"])
 app.include_router(upload.router, prefix="/api", tags=["upload"])
+app.include_router(chat.router, prefix="/api/chats", tags=["chats"])
+app.include_router(chat_websocket.router)
+app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(notification_ws.router)
 
 @app.get("/")
 async def root():

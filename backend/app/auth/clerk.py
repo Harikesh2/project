@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException, Depends, WebSocket
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 import httpx
@@ -109,24 +109,43 @@ class ClerkAuth:
 clerk_auth = ClerkAuth()
 
 
+def _build_user_dict(user_claims: Dict[str, Any]) -> Dict[str, Any]:
+    """Build the canonical user dictionary from Clerk claims."""
+    return {
+        "user_id": user_claims.get("sub"),
+        "email": user_claims.get("email"),
+        "username": user_claims.get("username"),
+        "claims": user_claims,
+    }
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> Dict[str, Any]:
     """Dependency to get current authenticated user"""
     token = credentials.credentials
     user_claims = await clerk_auth.verify_token(token)
-    
-    # Extract user ID from Clerk claims
-    user_id = user_claims.get("sub")
-    if not user_id:
+
+    if not user_claims.get("sub"):
         raise HTTPException(
             status_code=401,
             detail="Invalid token: missing user ID"
         )
-    
-    return {
-        "user_id": user_id,
-        "email": user_claims.get("email"),
-        "username": user_claims.get("username"),
-        "claims": user_claims
-    }
+
+    return _build_user_dict(user_claims)
+
+
+async def get_current_websocket_user(websocket: WebSocket) -> Dict[str, Any]:
+    """Authenticate a WebSocket connection from a Clerk JWT in the query string."""
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=1008)
+        raise HTTPException(status_code=401, detail="Missing authentication token")
+
+    user_claims = await clerk_auth.verify_token(token)
+
+    if not user_claims.get("sub"):
+        await websocket.close(code=1008)
+        raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
+
+    return _build_user_dict(user_claims)

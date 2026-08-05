@@ -1,26 +1,40 @@
-import { useParams } from 'react-router-dom';
-import { Loader2, Users, UserPlus, UserMinus, Calendar } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Loader2, Users, UserPlus, UserMinus, Calendar, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 import { useUserService } from '@/services/userService';
 import { usePostService } from '@/services/postService';
+import { useChatService } from '@/services/chatService';
 import PostCard from '@/components/PostCard';
 
 export default function Profile() {
   const { userId } = useParams<{ userId: string }>();
+  const navigate = useNavigate();
   const { useUserProfile, useCurrentUser, useToggleFollow } = useUserService();
   const { useUserPosts } = usePostService();
+  const { useOpenConversation } = useChatService();
   
   const { data: currentUser } = useCurrentUser();
   const { data: profile, isLoading: profileLoading } = useUserProfile(userId!);
   const { data: posts, isLoading: postsLoading } = useUserPosts(userId!);
   const toggleFollow = useToggleFollow();
+  const openConversation = useOpenConversation();
 
   const isOwnProfile = currentUser?.user_id === userId;
 
   const handleFollowToggle = () => {
     if (userId) {
       toggleFollow.mutate(userId);
+    }
+  };
+
+  const handleMessage = async () => {
+    if (!userId) return;
+    try {
+      const conv = await openConversation.mutateAsync(userId);
+      navigate(`/chats/${conv.conversation_id}?with=${userId}`);
+    } catch {
+      // error handled by mutation
     }
   };
 
@@ -72,29 +86,35 @@ export default function Profile() {
                 </p>
               </div>
 
-              {/* Follow Button */}
+              {/* Follow + Message Buttons */}
               {!isOwnProfile && (
-                <button
-                  onClick={handleFollowToggle}
-                  disabled={toggleFollow.isPending}
-                  className={`btn flex items-center space-x-2 ${
-                    profile.is_following
-                      ? 'btn-outline text-red-650 dark:text-red-400 border-red-300 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/20'
-                      : 'btn-primary'
-                  }`}
-                >
-                  {profile.is_following ? (
-                    <>
-                      <UserMinus className="w-4 h-4" />
-                      <span>Unfollow</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-4 h-4" />
-                      <span>Follow</span>
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleFollowToggle}
+                    disabled={toggleFollow.isPending}
+                    className="btn btn-primary flex items-center space-x-2"
+                  >
+                    {profile.is_following ? (
+                      <>
+                        <UserMinus className="w-4 h-4" />
+                        <span>Unfollow</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        <span>Follow</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleMessage}
+                    disabled={openConversation.isPending}
+                    className="btn btn-primary flex items-center space-x-2"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Message</span>
+                  </button>
+                </div>
               )}
             </div>
 

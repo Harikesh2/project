@@ -15,6 +15,7 @@ from app.models.follow import (
 )
 from app.models.user import UserSearch
 from app.services.user_service import user_service
+from app.services.notification_service import maybe_notify
 import logging
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,15 @@ class FollowService:
 
                 await user_service.increment_following_count(follower_id)
                 await user_service.increment_followers_count(following_id)
+
+                # Notification: follower_id != following_id by guard above
+                await maybe_notify(
+                    actor_id=follower_id,
+                    recipient_id=following_id,
+                    type_="follow",
+                    entity_id=follower_id,
+                    entity_type="user",
+                )
 
                 return True
 

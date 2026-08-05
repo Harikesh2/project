@@ -18,6 +18,7 @@ from app.models.comment import (
 from app.models.user import UserSearch
 from app.services.user_service import user_service
 from app.services.post_service import post_service
+from app.services.notification_service import maybe_notify
 import logging
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,25 @@ class CommentService:
                 )
                 await table.put_item(Item=duplicate.to_dynamo_item())
                 await post_service.increment_comments_count(post_id)
+
+                # Notification: skip self-comments
+                try:
+                    post = await post_service.get_post_by_id(post_id)
+                    if post:
+                        await maybe_notify(
+                            actor_id=user_id,
+                            recipient_id=post.user_id,
+                            type_="comment",
+                            entity_id=post_id,
+                            entity_type="post",
+                            preview=comment_data.content[:100],
+                        )
+                except Exception:
+                    logger.warning(
+                        f"Failed to send comment notification for post {post_id}",
+                        exc_info=True,
+                    )
+
                 return record_to_comment(canonical.to_dynamo_item())
 
             except ClientError as e:

@@ -140,3 +140,114 @@ export interface ProfileForm {
   bio?: string;
   avatar_url?: string;
 }
+
+// Chat types — matches backend ConversationMetadataRecord
+export interface Conversation {
+  conversation_id: string;
+  participant_ids: string[];
+  created_at: string;
+  updated_at: string;
+  last_message_preview?: string;
+  last_message_at?: string;
+}
+
+// Chat inbox item — matches backend ConversationWithUser
+// (enriched by list_conversations: metadata + the other participant's
+// public profile, so the inbox row can render without a follow-up call).
+export interface InboxItem {
+  conversation_id: string;
+  participant_ids: string[];
+  created_at: string;
+  updated_at: string;
+  last_message_preview?: string;
+  last_message_at?: string;
+  other_user: UserSearch;
+}
+
+// Chat message — matches backend ChatMessageRecord
+export interface ChatMessage {
+  message_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+  client_message_id: string;
+}
+
+// Chat paginated response (backend returns next_cursor instead of last_key/has_more)
+export interface CursorPage<T> {
+  items: T[];
+  next_cursor: string | null;
+}
+
+// WebSocket event — outgoing message.send
+export interface ChatSendEvent {
+  type: "message.send";
+  conversation_id: string;
+  client_message_id: string;
+  content: string;
+}
+
+// WebSocket event — incoming message.created
+export interface ChatMessageCreatedEvent {
+  type: "message.created";
+  conversation: Conversation;
+  message: ChatMessage;
+  client_message_id: string;
+}
+
+// WebSocket event — incoming ready
+export interface ChatReadyEvent {
+  type: "ready";
+}
+
+// WebSocket event — incoming error. `client_message_id` is echoed back on
+// `SEND_FAILED` / `INVALID_EVENT` so the client can target the exact failing
+// optimistic bubble; it's omitted for connection-level / global errors.
+export interface ChatErrorEvent {
+  type: "error";
+  code: string;
+  detail: string;
+  client_message_id?: string;
+}
+
+// Union type for all incoming WebSocket events
+export type ChatWsEvent = ChatReadyEvent | ChatMessageCreatedEvent | ChatErrorEvent;
+
+// Notification types — matches backend Notification API response
+// DynamoDB: PK=NOTIFICATION#{id}, SK=METADATA (canonical)
+//           PK=USER#{recipient_id}, SK=NOTIFICATION#{created_at}#{id} (user list)
+export type NotificationType = "like" | "follow" | "comment";
+
+export interface Notification {
+  id: string;
+  recipient_id: string;
+  actor_id: string;
+  type: NotificationType;
+  entity_id: string;
+  entity_type: string;
+  payload: {
+    actor_username: string;
+    actor_avatar_url?: string;
+    preview?: string;
+  };
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface NotificationListResponse {
+  items: Notification[];
+  next_token: string | null;
+}
+
+export interface UnreadCountResponse {
+  count: number;
+}
+
+// WebSocket event — incoming notification.created
+export interface NotificationCreatedEvent {
+  type: "notification.created";
+  notification: Notification;
+}
+
+// Union type for all notification WebSocket events
+export type NotificationWsEvent = NotificationCreatedEvent;
