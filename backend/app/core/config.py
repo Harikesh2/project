@@ -1,5 +1,6 @@
 # pyrefly: ignore [missing-import]
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import List, Optional
 import os
 
@@ -28,6 +29,17 @@ class Settings(BaseSettings):
     # API Configuration
     cors_origins: List[str] = ["http://localhost:5173"]
     debug: bool = False
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Accept JSON array (["https://a"]), comma-separated, or single origin."""
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                v = v[1:-1]
+            v = [o.strip().strip('"').strip("'").rstrip("/") for o in v.split(",") if o.strip()]
+        return v
 
     # Chat Configuration
     chat_max_message_length: int = 5000
