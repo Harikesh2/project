@@ -2,24 +2,28 @@
 
 Execution plan for the decisions in `decision.md`. Each phase builds on the last; phases are independently verifiable.
 
+> **Approach:** One phase at a time — plan, implement, verify, then move to the next phase in a new chat.
+
 ---
 
 ## Phase 0 — Config & dependencies
 
 **Files:** `backend/requirements.txt`, `backend/app/core/config.py`, `backend/.env.example`
 
-- Add deps: `moonshot`, `pinecone`.
+- Add deps: `openai`, `pinecone`.
 - Add env vars to `Settings`: `moonshot_api_key`, `pinecone_api_key`, `pinecone_index` (default `social-posts`).
 - Document in `.env.example`.
 
-**Verify:** `python -c "import moonshot, pinecone"` + config loads without error.
+**Verify:** `python -c "import openai, pinecone"` + config loads without error.
+
+**Status:** ✅ Complete
 
 ## Phase 1 — Backend RAG (posts)
 
 **Files:** `backend/app/services/embedding_service.py` (new), `backend/app/api/search.py` (new), `backend/app/services/post_service.py`, `backend/app/api/posts.py`, `backend/app/main.py`
 
 1. `embedding_service.py`:
-   - `embed_text(text) -> list[float]` (1536-d, via `moonshot-v1-embed`).
+   - `embed_text(text) -> list[float]` (1536-d, via `moonshot-v1-embed` via `openai` SDK).
    - `upsert_post(post_id, user_id, username, caption)` → embed `f"{username}: {caption}"`, upsert namespace `posts`, metadata `{post_id, user_id}`.
    - `search_posts(query, limit) -> list[post_id]` → embed query → Pinecone query → return IDs in score order.
    - `delete_post_vector(post_id)` → `index.delete([post_id])`.
@@ -27,15 +31,17 @@ Execution plan for the decisions in `decision.md`. Each phase builds on the last
 2. `api/search.py`: `GET /api/search/posts?q=&limit=10`
    - empty `q` → `post_service.get_global_feed(limit)`
    - else `search_posts()` → if empty → fallback to feed
-   - batch-fetch full posts via new `post_service.batch_get_posts(ids)` and enrich to `PostWithUser`.
-3. `post_service.batch_get_posts(ids)`: `BatchGetItem` (chunk ≤100), reorder results to match input ID order (BatchGetItem returns unordered).
-4. Hooks in `posts.py` / `post_service.py`:
+   - batch-fetch full posts via `post_service.batch_get_posts(ids)` and enrich to `PostWithUser`.
+3. `post_service.batch_get_posts(ids)`: `BatchGetItem` (chunk ≤100), reorder results to match input ID order.
+4. Hooks in `post_service.py`:
    - **Create:** after save → fetch username via `user_service.get_user_by_id()` → `upsert_post(...)` in `try/except`.
-   - **Edit:** `update_post` already rewrites `updated_at`; add `GSI3SK = updated_at` to the update expression + re-embed content in `try/except`.
+   - **Edit:** `GSI3SK = updated_at` added to update expression + re-embed content in `try/except`.
    - **Delete:** `delete_post_vector(post_id)` in `try/except`.
 5. Register `search.router` in `main.py`.
 
 **Verify:** pytest suite green; manual `GET /api/search/posts?q=` and `?q=beach` against local DynamoDB + mocked Pinecone.
+
+**Status:** ✅ Complete
 
 ## Phase 2 — User search (same canonical)
 

@@ -19,6 +19,7 @@ from app.models.post import (
 )
 from app.models.user import UserSearch
 from app.services.user_service import user_service
+from app.services.embedding_service import embedding_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,15 @@ class PostService:
                 )
                 await table.put_item(Item=timeline.to_dynamo_item())
                 await user_service.increment_posts_count(user_id)
+
+                # Embed post vector (best-effort)
+                try:
+                    user = await user_service.get_user_by_id(user_id)
+                    username = user.username if user else user_id
+                    embedding_service.upsert_post(post_id, user_id, username, post_data.content)
+                except Exception as e:
+                    logger.error(f"Failed to embed post {post_id}: {e}")
+
                 return record_to_post(metadata.to_dynamo_item())
 
             except ClientError as e:
@@ -173,6 +183,36 @@ class PostService:
             except ClientError as e:
                 logger.error(f"Error getting global feed: {e}")
                 return []
+
+    async def batch_get_posts(self, post_ids: List[str]) -> List[Post]:
+        """Fetch multiple posts by ID via BatchGetItem, preserving input order."""
+        if not post_ids:
+            return []
+
+        async with db_connection.get_async_resource() as dynamodb:
+            table = await dynamodb.Table(self.table_name)
+
+            items: dict[str, dict] = {}
+            for i in range(0, len(post_ids), 100):
+                chunk = post_ids[i : i + 100]
+                try:
+                    response = await table.batch_get_item(
+                        RequestItems={
+                            self.table_name: {
+                                "Keys": [
+                                    PostEntityKeys.metadata_key(pid) for pid in chunk
+                                ]
+                            }
+                        }
+                    )
+                    for item in response.get("Responses", {}).get(self.table_name, []):
+                        post_id = item.get("post_id")
+                        if post_id:
+                            items[post_id] = item
+                except ClientError as e:
+                    logger.error(f"Error in batch_get_posts: {e}")
+
+            return [record_to_post(items[pid]) for pid in post_ids if pid in items]
 
     async def get_user_posts(
         self, user_id: str, limit: int = 20, last_key: Optional[str] = None
@@ -227,7 +267,7 @@ class PostService:
             if is_legacy_timeline_post(raw_item):
                 await self._ensure_canonical_post(table, raw_item)
 
-            update_expression = "SET updated_at = :updated_at"
+            update_expression = "SET updated_at = :updated_at, GSI3SK = :updated_at"
             expression_values = {":updated_at": datetime.utcnow().isoformat()}
 
             if post_data.content is not None:
@@ -242,6 +282,18 @@ class PostService:
                 await self._update_all_post_items(
                     table, post_id, user_id, update_expression, expression_values
                 )
+
+                # Re-embed if content changed (best-effort)
+                if post_data.content is not None:
+                    try:
+                        user = await user_service.get_user_by_id(user_id)
+                        username = user.username if user else user_id
+                        embedding_service.upsert_post(
+                            post_id, user_id, username, post_data.content
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to re-embed post {post_id}: {e}")
+
                 return await self.get_post_by_id(post_id)
 
             except ClientError as e:

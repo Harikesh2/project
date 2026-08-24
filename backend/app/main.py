@@ -8,7 +8,7 @@ import logging
 import os
 
 from app.core.config import settings
-from app.api import users, posts, upload, chat, chat_websocket, notifications, notification_ws
+from app.api import users, posts, upload, chat, chat_websocket, notifications, notification_ws, search
 from app.utils.aws_healthcheck import verify_aws_credentials, AWSValidationError
 
 # Configure logging
@@ -104,6 +104,7 @@ app.include_router(chat.router, prefix="/api/chats", tags=["chats"])
 app.include_router(chat_websocket.router)
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(notification_ws.router)
+app.include_router(search.router, prefix="/api/search", tags=["search"])
 
 @app.get("/")
 async def root():

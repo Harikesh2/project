@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     cors_origins: List[str] = ["http://localhost:5173"]
     debug: bool = False
 
+    # RAG Search
+    moonshot_api_key: str = ""
+    pinecone_api_key: str = ""
+    pinecone_index: str = "social-posts"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
