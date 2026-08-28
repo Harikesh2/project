@@ -17,7 +17,7 @@ from app.models.post import (
     record_to_post,
     is_legacy_timeline_post,
 )
-from app.models.user import UserSearch
+from app.models.user import User, UserSearch
 from app.services.user_service import user_service
 from app.services.embedding_service import embedding_service
 import logging
@@ -196,7 +196,7 @@ class PostService:
             for i in range(0, len(post_ids), 100):
                 chunk = post_ids[i : i + 100]
                 try:
-                    response = await table.batch_get_item(
+                    response = await dynamodb.batch_get_item(
                         RequestItems={
                             self.table_name: {
                                 "Keys": [
@@ -252,6 +252,46 @@ class PostService:
             except ClientError as e:
                 logger.error(f"Error getting user posts for {user_id}: {e}")
                 return []
+
+    async def get_user_posts_for_feed(
+        self, table, user_id: str, limit: int = 10
+    ) -> List[dict]:
+        """Query posts for a user's timeline. Returns raw items (no user lookup)."""
+        try:
+            response = await table.query(
+                KeyConditionExpression=Key("Pk").eq(f"USER#{user_id}")
+                & Key("Sk").begins_with("POST#"),
+                ScanIndexForward=False,
+                Limit=limit,
+            )
+            return response.get("Items", [])
+        except ClientError as e:
+            logger.error(f"Error getting feed posts for {user_id}: {e}")
+            return []
+
+    async def get_global_feed(self, table=None, limit: int = 20) -> List[dict]:
+        """Get newest posts globally via GSI3. Opens own connection if table not provided."""
+        try:
+            if table is None:
+                async with db_connection.get_async_resource() as dynamodb:
+                    table = await dynamodb.Table(self.table_name)
+                    response = await table.query(
+                        IndexName=PostEntityKeys.GSI3_INDEX,
+                        KeyConditionExpression=Key("GSI3PK").eq(PostEntityKeys.GSI3_PK),
+                        ScanIndexForward=False,
+                        Limit=limit,
+                    )
+                    return response.get("Items", [])
+            response = await table.query(
+                IndexName=PostEntityKeys.GSI3_INDEX,
+                KeyConditionExpression=Key("GSI3PK").eq(PostEntityKeys.GSI3_PK),
+                ScanIndexForward=False,
+                Limit=limit,
+            )
+            return response.get("Items", [])
+        except ClientError as e:
+            logger.error(f"Error getting global feed: {e}")
+            return []
 
     async def update_post(
         self, post_id: str, user_id: str, post_data: PostUpdate

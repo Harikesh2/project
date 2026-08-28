@@ -10,7 +10,7 @@ FastAPI backend with AWS DynamoDB and Clerk authentication.
 - **Database Performance (DynamoDB)**:
   - **GSI Query Optimizations**: Swapped out table-wide Scan operations in favor of highly optimized GSI queries on `GSI1-post-id-index` (for individual posts) and `GSI3-followers-index` (for follower lists).
 - **RAG-Based Semantic Search**:
-  - **Post Search**: Moonshot AI embeddings + Pinecone vector search for semantic post retrieval (`GET /api/search/posts`).
+  - **Post Search**: Pinecone Inference embeddings (`llama-text-embed-v2`) + vector search for semantic post retrieval (`GET /api/search/posts`).
   - **User Search**: Same canonical RAG treatment for user discovery (`GET /api/search/users`).
   - **Graceful Fallback**: Pinecone failures degrade to DynamoDB (recent posts/users).
 - **Core Platform Features**:
@@ -80,7 +80,6 @@ Required environment variables in your `.env` file:
 AWS_ACCESS_KEY_ID=your_access_key_id
 AWS_SECRET_ACCESS_KEY=your_secret_access_key
 AWS_REGION=ap-south-1
-MOONSHOT_API_KEY=your_moonshot_api_key
 PINECONE_API_KEY=your_pinecone_api_key
 PINECONE_INDEX=social-posts
 ```

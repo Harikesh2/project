@@ -27,12 +27,18 @@ async def search_posts(
         else:
             posts = await post_service.batch_get_posts(post_ids)
 
+    if not posts:
+        return []
+
+    user_ids = list({p.user_id for p in posts})
+    users = await user_service.batch_get_users(user_ids)
+    user_map = {u.user_id: UserSearch.from_user(u) for u in users}
+
     results: List[PostWithUser] = []
     for post in posts:
-        user = await user_service.get_user_by_id(post.user_id)
-        user_search = UserSearch.from_user(user) if user else None
-        if user_search:
-            results.append(PostWithUser.from_post_and_user(post, user_search))
+        author = user_map.get(post.user_id)
+        if author:
+            results.append(PostWithUser.from_post_and_user(post, author))
     return results
 
 

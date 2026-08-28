@@ -1,97 +1,164 @@
-# Decision Log — RAG-Based Feed Search
+# Decision Log
 
-This document records the locked-in decisions for the RAG-based feed search feature. It is the source of truth the implementing model (and any reviewer) verifies against before touching code.
+**Rule:** Every code change must update this file before or in the same commit. No exceptions.
 
 ---
 
-## 1. Goal
+## RAG-Based Semantic Search
 
-Add **semantic feed search** to the social media app. Differentiator: uses **Moonshot AI** (not OpenAI) to showcase vendor-agnostic AI engineering.
+### 1. Goal
 
-The result on the Search page: type a phrase like "beach vibes" and get posts whose *meaning* matches — not just keyword matches.
+Add semantic search to posts and users. No LLM in the search path — pure vector math.
 
-## 2. How it works — NO LLM in the search path
-
-There is **no prompt, no chat, no agent** anywhere in this feature. RAG here is pure vector math.
-
-The only Moonshot call is the **embedding model** (`moonshot-v1-embed`) — a text→numbers encoder, not a chatbot. Our API key never generates prose.
+### 2. Architecture
 
 ```
-At post creation:
-  "userX: sunset in Goa" → embed → [0.12, -0.45, ...1536 numbers] → stored in Pinecone
+Post created:
+  "userX: sunset in Goa" → embed → [0.12, -0.45, ...1024 numbers] → stored in Pinecone
 
-When someone searches "beach vibes":
-  1. "beach vibes" → embed → [0.03, ...1536 numbers]     <- the ONLY AI call
-  2. Pinecone compares those numbers to all post vectors (cosine similarity)
-  3. Returns closest post_ids (e.g. ["abc", "def"])
-  4. We fetch the real posts from DynamoDB by those IDs
-  5. User sees results
+Search "beach vibes":
+  1. "beach vibes" → embed → vector
+  2. Pinecone cosine similarity → post IDs
+  3. DynamoDB BatchGetItem → full posts
+  4. User sees results
 ```
 
-The "AI" part is steps 1–2 — vector math, not generation. **We write zero prompts.** Moonshot never reads a caption again and never answers anything; it only converts words ↔ numbers.
+No prompt, no chat, no agent. Embedding model converts text → numbers only.
 
-This is why the feature is fast (hobby scale) and why the fallback exists: if Pinecone returns nothing, we return recent posts instead. No dead ends.
+### 3. Decisions
 
-## 3. Locked architecture decisions
+| # | Decision | Status |
+|---|----------|--------|
+| D1 | **Embedding model:** `llama-text-embed-v2` (Pinecone Inference), 1024 dimensions, cosine similarity | Locked |
+| D2 | **Vector DB:** Pinecone, index `social-posts`. Metadata: `post_id` + `user_id` only — never captions | Locked |
+| D3 | **Namespaces:** `posts` (post vectors) and `users` (user vectors) in same index | Locked |
+| D4 | **Embed text:** posts → `f"{username}: {caption}"`; users → `f"{username}: {bio}"` | Locked |
+| D5 | **Source of truth is DynamoDB.** Pinecone stores IDs only; full posts fetched by ID after retrieval | Locked |
+| D6 | **Username at embed time** fetched via `user_service.get_user_by_id()` (Clerk claims can be None) | Locked |
+| D7 | **Synchronous embedding** inside request thread (no queues — hobby scale). Wrapped in try/except; failure never breaks creation | Locked |
+| D8 | **`updated_at` mechanism:** `from_create` sets `updated_at=now`; `update_post` rewrites it. On edit, also rewrite `GSI3SK = updated_at` so edited posts bubble to top | Locked |
+| D9 | **Search page:** existing Users/Posts tabs. Posts tab → RAG. Users tab gets same canonical RAG treatment | Locked |
+| D10 | **SDK:** `pinecone` built-in. Env var: `PINECONE_API_KEY`. No OpenAI, no Moonshot | Locked |
+| D11 | **No metadata bloat:** no caching, no queues, no hashtag search, no user-vector preview in Pinecone | Locked |
+| D12 | **Embedding failures** logged, never fatal. Pinecone failures degrade to DynamoDB fallback | Locked |
 
-| # | Decision |
-|---|----------|
-| D1 | **Embedding model:** `moonshot-v1-embed`, 1536 dimensions, cosine similarity. |
-| D2 | **Vector DB:** Pinecone, index `social-posts`. Metadata stored: `post_id` + `user_id` **only** — never captions. |
-| D3 | **Namespaces:** `posts` (post vectors) and `users` (user vectors) in the same index. |
-| D4 | **Embed text:** posts → `f"{username}: {caption}"`; users → `f"{username}: {bio}"`. |
-| D5 | **Source of truth is DynamoDB.** Pinecone stores IDs only; full posts are fetched by ID after retrieval. |
-| D6 | **Username at embed time** is fetched via `user_service.get_user_by_id()` (Clerk claims can be `None`). |
-| D7 | **Synchronous embedding** on post create, inside the request thread (no queues — hobby scale). Wrapped in `try/except`; embedding failure never breaks post creation. |
-| D8 | **`updated_at` mechanism (already in code):** `from_create` sets `updated_at=now`; `update_post` rewrites it. On edit we also rewrite `GSI3SK = updated_at` on the canonical item so edited posts bubble to the top of the recent feed — "fetch by updated_at" with zero index/schema change. |
-| D9 | **Search page:** keep existing Users/Posts tabs. Posts tab → RAG. Users tab gets the same canonical RAG treatment (fixes the slow `contains` Scan). |
-| D10 | **SDK:** `moonshot` Python package. API key from env `MOONSHOT_API_KEY`. No OpenAI. |
-| D11 | **No metadata bloat:** no caching, no queues, no hashtag search, no user-vector preview in Pinecone. |
-
-## 4. API contract (Phase 1)
+### 4. API contract
 
 ```
 GET /api/search/posts?q={query}&limit=10
 
 Logic:
   if not query:
-      return recent_posts_from_dynamodb(limit)      # GSI3 global feed (by updated_at)
+      return recent_posts_from_dynamodb(limit)      # GSI3 global feed
   else:
       ids = pinecone_query(embed(query))
       if not ids:
           return recent_posts_from_dynamodb(limit)  # zero-result fallback
-      return batch_get_dynamodb(ids)                # full posts, reordered by score
+      return batch_get_dynamodb(ids)                # full posts
 ```
 
-Any embedding/Pinecone error degrades to the same fallback (log + recent posts).
+```
+GET /api/search/users?q={query}&limit=20
 
-## 5. User search (Phase 2 — same canonical approach)
+Logic:
+  if not query:
+      return recent_users_from_dynamodb(limit)      # bounded Scan
+  else:
+      ids = pinecone_query(embed(query))
+      if not ids:
+          return keyword_search_dynamodb(query)     # fallback
+      return batch_get_users(ids)
+```
 
-| Query | Behavior |
-|-------|----------|
-| Empty | **Recent users showcase** — bounded Scan `Pk begins_with USER#` AND `Sk = METADATA`, limit 20 (no GSI for latest users; scan is fine at hobby scale). |
-| Text | Embed → Pinecone namespace `users` → batch-get users → fallback to existing keyword Scan. |
-
-## 6. Embedding lifecycle
+### 5. Embedding lifecycle
 
 | Event | Action |
 |-------|--------|
-| Post created | upsert vector (`f"{username}: {content}"`) in `try/except` |
-| Post edited | re-embed (content changed) + rewrite `updated_at` and `GSI3SK` |
-| Post deleted | `index.delete([post_id])` |
-| Backfill | `scripts/backfill_embeddings.py` embeds all existing posts + users |
+| Post created | upsert vector in try/except |
+| Post edited | re-embed + rewrite GSI3SK |
+| Post deleted | delete vector from Pinecone |
+| User created | upsert vector in try/except |
+| User updated | re-embed if username/bio changed |
+| User deleted | delete vector from Pinecone |
 
-## 7. Frontend
+---
 
-- `SearchBar.tsx` with 300ms debounce.
-- 3 gray skeleton cards while loading.
-- Posts tab reuses existing `PostCard` / `PostWithUser` shape.
-- Route `/search` already exists (App.tsx).
+## Feed Performance
 
-## 8. Constraints for the coder
+### 6. Problem
 
-- No OpenAI anywhere. Only `moonshot` package + `MOONSHOT_API_KEY`.
+Feed endpoint took 29s to load. Each DynamoDB call opened a new TCP+TLS connection via aioboto3. 50 follows = 101 connections + 151 sequential ops.
+
+### 7. Decisions
+
+| # | Decision | Status |
+|---|----------|--------|
+| D13 | **Single connection per request.** Feed endpoint opens one `db_connection.get_async_resource()` and passes the table to all sub-queries | Locked |
+| D14 | **Batch user lookups.** After collecting all posts, fetch all author users via `batch_get_users()` in one call instead of N calls | Locked |
+| D15 | **`get_user_posts_for_feed(table, user_id)`** — lightweight query, no user lookup, takes table as param to share connection | Locked |
+| D16 | **`get_global_feed(table, limit)`** — queries GSI3 `GSI3-global-feed-index` for newest posts globally | Locked |
+
+---
+
+## Empty Feed for New Users
+
+### 8. Problem
+
+New users with 0 follows see empty feed `[]`. No global feed fallback existed.
+
+### 9. Decisions
+
+| # | Decision | Status |
+|---|----------|--------|
+| D17 | **Global feed fallback.** When `following_ids` is empty, feed endpoint returns posts from GSI3 global feed instead of `[]` | Locked |
+
+---
+
+## Search Endpoint Fixes
+
+### 10. Decisions
+
+| # | Decision | Status |
+|---|----------|--------|
+| D18 | **`get_global_feed(table=None)`** — optional param; opens own connection when None. Search endpoint calls with None (simple), feed endpoint passes shared table | Locked |
+| D19 | **Search user lookups** — batch via `batch_get_users()` instead of N+1 `get_user_by_id()` calls | Locked |
+
+---
+
+## DynamoDB Single-Table Design
+
+### 11. Table: `SocialMedia`
+
+Primary key: `Pk` (HASH), `Sk` (RANGE)
+
+| GSI | Index name | PK | SK | Purpose |
+|-----|------------|----|----|---------|
+| GSI1 | `GSI1-email-index` | `GSI1PK` | `GSI1SK` | User by email |
+| GSI2 | `GSI2-username-index` | `GSI2PK` | `GSI2SK` | User by username |
+| GSI3 | `GSI3-global-feed-index` | `GSI3PK=POSTS` | `GSI3SK=created_at` | Global post feed |
+
+### 12. Entity layout
+
+| Entity | PK | SK |
+|--------|----|----|
+| User metadata | `USER#{user_id}` | `METADATA` |
+| User profile | `USER#{user_id}` | `PROFILE` |
+| Post metadata | `POST#{post_id}` | `METADATA` |
+| User timeline post | `USER#{user_id}` | `POST#{post_id}` |
+| Following edge | `USER#{follower_id}` | `FOLLOWING#{target_id}` |
+| Follower edge | `USER#{target_id}` | `FOLLOWER#{follower_id}` |
+| Post like | `POST#{post_id}` | `LIKE#{user_id}` |
+| User like | `USER#{user_id}` | `LIKE#{post_id}` |
+| Comment | `POST#{post_id}` | `COMMENT#{comment_id}` |
+| User comment | `USER#{user_id}` | `COMMENT#{comment_id}` |
+
+---
+
+## Constraints
+
+- No OpenAI. Only `pinecone` package + `PINECONE_API_KEY`.
 - No queues. Embed inside the FastAPI request thread.
 - Pinecone metadata = `{post_id, user_id}` only (posts) / `{user_id}` only (users).
-- Embedding failures are logged, never fatal.
+- Embedding failures logged, never fatal.
 - All API response shapes unchanged from existing endpoints.
+- **Every code change must update this file.**

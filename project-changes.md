@@ -624,3 +624,60 @@ Both require Clerk auth. Pinecone failures degrade to DynamoDB fallback.
 | `backend/scripts/backfill_embeddings.py` | New — idempotent backfill script |
 | `frontend/src/services/postService.ts` | `useSearchPosts` hits `/api/search/posts` |
 | `frontend/src/pages/Search.tsx` | Uses search API endpoints |
+
+---
+
+## Phase 11: Pinecone Built-in Embeddings (Moonshot → Pinecone Inference)
+
+**Status:** Complete
+
+### What changed
+
+Migrated from Moonshot AI (`moonshot-v1-embed` via OpenAI SDK) to Pinecone-hosted `llama-text-embed-v2` for text embeddings. The Moonshot embedding model was deprecated and returned 403 errors. Pinecone Inference API provides the same functionality with no external dependency.
+
+### Root cause
+
+Moonshot/Kimi platform deprecated `moonshot-v1` series models (including `moonshot-v1-embed`) on their platform sunset. The model no longer accepts API calls.
+
+### Embedding model
+
+| Aspect | Old (Moonshot) | New (Pinecone) |
+|--------|----------------|----------------|
+| Model | `moonshot-v1-embed` | `llama-text-embed-v2` (NVIDIA) |
+| Dimensions | 1536 | 1024 |
+| Provider | Moonshot AI (OpenAI-compatible) | Pinecone Inference |
+| SDK | `openai` | `pinecone` (built-in) |
+| API | `client.embeddings.create()` | `pc.inference.embed()` |
+| input_type | N/A | `"passage"` (indexing), `"query"` (search) |
+
+### Pinecone index
+
+Recreated `social-posts` index at 1024 dimensions (was 1536). Old index deleted, new one created with cosine metric.
+
+### Files updated
+
+| File | Changes |
+|------|---------|
+| `backend/requirements.txt` | Removed `openai>=1.0.0` |
+| `backend/app/core/config.py` | Removed `moonshot_api_key` |
+| `backend/.env.example` | Removed `MOONSHOT_API_KEY` |
+| `backend/app/services/embedding_service.py` | Replaced OpenAI SDK with `pc.inference.embed()` |
+| `backend/scripts/recreate_index.py` | New — one-shot script to delete old 1536-dim index and create 1024-dim |
+
+### Backfill
+
+Re-ran `scripts/backfill_embeddings.py` to populate new 1024-dim vectors. Old Moonshot vectors (broken) replaced.
+
+### Config changes
+
+| Env var | Status |
+|---------|--------|
+| `MOONSHOT_API_KEY` | Removed |
+| `PINECONE_API_KEY` | Kept |
+| `PINECONE_INDEX` | Kept (default: `social-posts`) |
+
+### Backward compatibility
+
+- API contract unchanged — all endpoints return the same JSON fields
+- Frontend requires no changes
+- Search behavior identical (cosine similarity, same namespaces)

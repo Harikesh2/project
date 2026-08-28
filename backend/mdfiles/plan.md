@@ -91,6 +91,26 @@ Execution plan for the decisions in `decision.md`. Each phase builds on the last
 
 **Status:** ✅ Complete
 
+## Phase 6 — Pinecone Built-in Embeddings (Moonshot → Pinecone Inference)
+
+**Files:** `backend/requirements.txt`, `backend/app/core/config.py`, `backend/.env.example`, `backend/app/services/embedding_service.py`, `backend/scripts/backfill_embeddings.py`
+
+**Status:** ✅ Complete
+
+Migrate from Moonshot AI (`moonshot-v1-embed` via OpenAI SDK) to Pinecone-hosted `llama-text-embed-v2` (1024-dim). The Moonshot model is deprecated (403 errors). Pinecone Inference API replaces it with no external dependency.
+
+### Sub-phases
+
+| Sub | What | Verify |
+|-----|------|--------|
+| 6.0 | Config: remove `openai` dep, remove `moonshot_api_key` | Config loads, `import pinecone` ok |
+| 6.1 | Rewrite `embedding_service.py` to use `pc.inference.embed()` | `embed_text()` returns 1024-dim vector |
+| 6.2 | Recreate `social-posts` index at 1024 dimensions | `describe_index` shows dim=1024 |
+| 6.3 | Backfill + fix processed counter bug | Pinecone populated, rerun safe |
+| 6.4 | E2E test | Search endpoints work, no 500s |
+
+See `change-plan.md` for full execution details.
+
 ---
 
 ## Ordering rules

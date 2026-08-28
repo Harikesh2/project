@@ -1,13 +1,18 @@
 import asyncio
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Dict, Any, Optional
 
 from app.auth.clerk import get_current_user
-from app.models.post import Post, PostCreate, PostUpdate, PostWithUser
+from app.database.connection import db_connection
+from app.models.post import Post, PostCreate, PostUpdate, PostWithUser, record_to_post
 from app.models.comment import Comment, CommentCreate, CommentWithUser
+from app.models.user import UserSearch
 from app.services.post_service import post_service
 from app.services.follow_service import follow_service
+from app.services.user_service import user_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["posts"])
 
 
@@ -27,32 +32,49 @@ async def get_feed(
     last_key: Optional[str] = Query(None),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get timeline feed of posts from followed users"""
-    # Get list of users that current user follows
-    following_ids = await follow_service.get_following_ids(current_user["user_id"])
-    
-    # Include current user's posts in feed
-    following_ids.append(current_user["user_id"])
-    
-    if not following_ids:
-        return []
-    
-    # Parallel query recent posts from all followed users
-    tasks = [post_service.get_user_posts(user_id, limit=10) for user_id in following_ids]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    all_posts = []
-    for posts_result in results:
-        if isinstance(posts_result, list):
-            all_posts.extend(posts_result)
+    """Get feed: global for new users, timeline for users with follows."""
+    user_id = current_user["user_id"]
+    following_ids = await follow_service.get_following_ids(user_id)
+
+    async with db_connection.get_async_resource() as dynamodb:
+        table = await dynamodb.Table(post_service.table_name)
+
+        if not following_ids:
+            raw_posts = await post_service.get_global_feed(table, limit=limit)
         else:
-            # Log error but don't fail the whole feed
-            import logging
-            logging.getLogger(__name__).error(f"Error fetching posts for user in feed: {posts_result}")
-    
-    # Sort by created_at descending and limit
-    all_posts.sort(key=lambda x: x.created_at, reverse=True)
-    return all_posts[:limit]
+            following_ids.append(user_id)
+            tasks = [
+                post_service.get_user_posts_for_feed(table, uid, limit=10)
+                for uid in following_ids
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            raw_posts = []
+            for r in results:
+                if isinstance(r, list):
+                    raw_posts.extend(r)
+                else:
+                    logger.error(f"Error fetching feed posts: {r}")
+
+        if not raw_posts:
+            return []
+
+        raw_posts.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        raw_posts = raw_posts[:limit]
+
+        post_user_ids = list({item["user_id"] for item in raw_posts})
+        users = await user_service.batch_get_users(post_user_ids)
+        user_map: Dict[str, UserSearch] = {
+            u.user_id: UserSearch.from_user(u) for u in users
+        }
+
+        posts = []
+        for item in raw_posts:
+            post = record_to_post(item)
+            author = user_map.get(item["user_id"])
+            if author:
+                posts.append(PostWithUser.from_post_and_user(post, author))
+
+        return posts
 
 
 @router.get("/user/{user_id}", response_model=List[PostWithUser])

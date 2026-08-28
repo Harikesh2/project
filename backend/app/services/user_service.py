@@ -246,7 +246,7 @@ class UserService:
             for i in range(0, len(user_ids), 100):
                 chunk = user_ids[i : i + 100]
                 try:
-                    response = await table.batch_get_item(
+                    response = await dynamodb.batch_get_item(
                         RequestItems={
                             self.table_name: {
                                 "Keys": [

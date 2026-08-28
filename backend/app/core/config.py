@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # RAG Search
-    moonshot_api_key: str = ""
     pinecone_api_key: str = ""
     pinecone_index: str = "social-posts"
 
