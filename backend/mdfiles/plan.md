@@ -54,6 +54,8 @@ Execution plan for the decisions in `decision.md`. Each phase builds on the last
 
 **Verify:** users tab fast on empty query; semantic matches for typed queries; keyword fallback intact.
 
+**Status:** ✅ Complete
+
 ## Phase 3 — Backfill script
 
 **Files:** `scripts/backfill_embeddings.py` (new)
@@ -63,6 +65,8 @@ Execution plan for the decisions in `decision.md`. Each phase builds on the last
 - Idempotent (upsert), logs progress + errors.
 
 **Verify:** run against dev DB → Pinecone populated; rerun is safe.
+
+**Status:** ✅ Complete
 
 ## Phase 4 — Frontend
 
@@ -75,13 +79,17 @@ Execution plan for the decisions in `decision.md`. Each phase builds on the last
 
 **Verify:** `npm run build` passes; `/search` shows recent posts on load, live-updates on typing.
 
+**Status:** ✅ Complete
+
 ## Phase 5 — Docs
 
 **Files:** `change.md` (new), `project-changes.md`, `backend/README.md`, `frontend/README.md`
 
 - `change.md`: record every file changed + why (mirrors `project-changes.md` style).
 - Update both READMEs with the new endpoint + env vars.
-- Append Phase 9+ section to `project-changes.md`.
+- Append Phase 10 section to `project-changes.md`.
+
+**Status:** ✅ Complete
 
 ---
 

@@ -69,15 +69,7 @@ export default function Search() {
  
       {/* Results */}
       <div className="space-y-6">
-        {!query ? (
-          <div className="text-center py-12">
-            <SearchIcon className="w-12 h-12 text-gray-400 dark:text-slate-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Start searching</h3>
-            <p className="text-gray-600 dark:text-slate-400">
-              Enter a search term to find users or posts
-            </p>
-          </div>
-        ) : activeTab === 'users' ? (
+        {activeTab === 'users' ? (
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Users</h2>
             {usersLoading ? (
@@ -125,7 +117,7 @@ export default function Search() {
             ) : (
               <div className="text-center py-8">
                 <Users className="w-8 h-8 text-gray-400 dark:text-slate-600 mx-auto mb-2" />
-                <p className="text-gray-600 dark:text-slate-400">No users found for "{query}"</p>
+                <p className="text-gray-600 dark:text-slate-400">No users found{query && ` for "${query}"`}</p>
               </div>
             )}
           </div>
@@ -145,7 +137,7 @@ export default function Search() {
             ) : (
               <div className="text-center py-8">
                 <FileText className="w-8 h-8 text-gray-400 dark:text-slate-600 mx-auto mb-2" />
-                <p className="text-gray-600 dark:text-slate-400">No posts found for "{query}"</p>
+                <p className="text-gray-600 dark:text-slate-400">No posts found{query && ` for "${query}"`}</p>
               </div>
             )}
           </div>

@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 EMBED_MODEL = "moonshot-v1-embed"
 EMBED_DIM = 1536
 POSTS_NAMESPACE = "posts"
+USERS_NAMESPACE = "users"
 
 
 class EmbeddingService:
@@ -72,6 +73,36 @@ class EmbeddingService:
             self.pinecone_index.delete(ids=[post_id], namespace=POSTS_NAMESPACE)
         except Exception as e:
             logger.error(f"Failed to delete post vector {post_id}: {e}")
+
+    def upsert_user(self, user_id: str, username: str, bio: str = "") -> None:
+        try:
+            vector = self.embed_text(f"{username}: {bio}")
+            self.pinecone_index.upsert(
+                vectors=[(user_id, vector, {"user_id": user_id})],
+                namespace=USERS_NAMESPACE,
+            )
+        except Exception as e:
+            logger.error(f"Failed to upsert user vector {user_id}: {e}")
+
+    def search_users(self, query: str, limit: int = 20) -> List[str]:
+        try:
+            vector = self.embed_text(query)
+            results = self.pinecone_index.query(
+                vector=vector,
+                top_k=limit,
+                namespace=USERS_NAMESPACE,
+                include_metadata=False,
+            )
+            return [match.id for match in results.matches]
+        except Exception as e:
+            logger.error(f"Failed to search user vectors: {e}")
+            return []
+
+    def delete_user_vector(self, user_id: str) -> None:
+        try:
+            self.pinecone_index.delete(ids=[user_id], namespace=USERS_NAMESPACE)
+        except Exception as e:
+            logger.error(f"Failed to delete user vector {user_id}: {e}")
 
 
 embedding_service = EmbeddingService()

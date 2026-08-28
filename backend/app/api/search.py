@@ -34,3 +34,21 @@ async def search_posts(
         if user_search:
             results.append(PostWithUser.from_post_and_user(post, user_search))
     return results
+
+
+@router.get("/users", response_model=List[UserSearch])
+async def search_users(
+    q: str = Query("", description="Search query"),
+    limit: int = Query(20, ge=1, le=50),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    if not q.strip():
+        return await user_service.search_users("", limit)
+
+    user_ids = embedding_service.search_users(q, limit=limit)
+    if user_ids:
+        users = await user_service.batch_get_users(user_ids)
+        if users:
+            return [UserSearch.from_user(u) for u in users]
+
+    return await user_service.search_users(q, limit)

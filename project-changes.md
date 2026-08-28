@@ -541,3 +541,86 @@ Edit, like, comment, and delete on legacy posts continue to use the Phase 8 lazy
 ```
 
 S3 keys are scoped per user when `user_id` is provided to `s3_service.upload_file()`.
+
+---
+
+## Phase 10: RAG-Based Feed Search
+
+**Status:** Complete
+
+### What changed
+
+Added **semantic search** to posts and users using Moonshot AI embeddings (`moonshot-v1-embed`, 1536-dim) and Pinecone vector storage. No LLM in the search path — pure vector similarity via cosine distance.
+
+### Architecture
+
+```
+Post created:
+  "userX: sunset in Goa" → embed → [0.12, -0.45, ...1536 numbers] → stored in Pinecone
+
+Search "beach vibes":
+  1. "beach vibes" → embed → vector          (Moonshot API call)
+  2. Pinecone cosine similarity → post IDs   (vector DB query)
+  3. DynamoDB BatchGetItem → full posts      (source of truth)
+  4. User sees results
+```
+
+### Embedding service (`backend/app/services/embedding_service.py`)
+
+| Function | Namespace | Input | Returns |
+|----------|-----------|-------|---------|
+| `embed_text(text)` | — | text | `List[float]` (1536-d) |
+| `upsert_post(post_id, user_id, username, caption)` | `posts` | post data | None |
+| `search_posts(query, limit)` | `posts` | search text | `List[str]` (post IDs) |
+| `delete_post_vector(post_id)` | `posts` | post ID | None |
+| `upsert_user(user_id, username, bio)` | `users` | user data | None |
+| `search_users(query, limit)` | `users` | search text | `List[str]` (user IDs) |
+| `delete_user_vector(user_id)` | `users` | user ID | None |
+
+All methods wrapped in `try/except` — embedding failures log and never raise.
+
+### Search API
+
+| Endpoint | Query | Behavior |
+|----------|-------|----------|
+| `GET /api/search/posts?q=&limit=10` | Empty | Recent posts via GSI3 global feed |
+| | Text | Embed → Pinecone → batch-fetch DynamoDB |
+| `GET /api/search/users?q=&limit=20` | Empty | Recent users via bounded Scan |
+| | Text | Embed → Pinecone → batch-fetch DynamoDB → fallback to keyword Scan |
+
+Both require Clerk auth. Pinecone failures degrade to DynamoDB fallback.
+
+### Embedding lifecycle
+
+| Event | Action |
+|-------|--------|
+| Post created | `upsert_post()` in `try/except` after DynamoDB save |
+| Post edited | Re-embed content + rewrite `GSI3SK = updated_at` |
+| Post deleted | `delete_post_vector()` |
+| User created | `upsert_user()` in `try/except` |
+| User updated | Re-embed if username or bio changed |
+| User deleted | `delete_user_vector()` |
+
+### Config additions
+
+| Env var | Purpose |
+|---------|---------|
+| `MOONSHOT_API_KEY` | Moonshot AI API key for embeddings |
+| `PINECONE_API_KEY` | Pinecone vector DB API key |
+| `PINECONE_INDEX` | Pinecone index name (default: `social-posts`) |
+
+### Files updated
+
+| File | Changes |
+|------|---------|
+| `backend/requirements.txt` | Added `openai>=1.0.0`, `pinecone>=5.0.0` |
+| `backend/app/core/config.py` | Added `moonshot_api_key`, `pinecone_api_key`, `pinecone_index` |
+| `backend/.env.example` | Added RAG env vars |
+| `backend/app/services/embedding_service.py` | New — embedding + vector operations |
+| `backend/app/api/search.py` | New — search endpoints for posts and users |
+| `backend/app/services/post_service.py` | Added `batch_get_posts()`, embedding hooks |
+| `backend/app/services/user_service.py` | Added Pinecone-first `search_users()`, embedding hooks |
+| `backend/app/main.py` | Registered search router |
+| `backend/scripts/backfill_embeddings.py` | New — idempotent backfill script |
+| `frontend/src/services/postService.ts` | `useSearchPosts` hits `/api/search/posts` |
+| `frontend/src/pages/Search.tsx` | Uses search API endpoints |

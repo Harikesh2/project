@@ -197,11 +197,11 @@ async def upload_avatar(
 # NOTE: /search MUST be declared BEFORE /{user_id} so FastAPI matches it correctly.
 @router.get("/search", response_model=List[UserSearch])
 async def search_users(
-    q: str = Query(..., min_length=1, description="Search query"),
+    q: str = Query("", description="Search query"),
     limit: int = Query(20, ge=1, le=50),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Search users by username or bio"""
+    """Search users semantically; empty q returns recent users."""
     users = await user_service.search_users(q, limit)
     return [UserSearch.from_user(user) for user in users]
 

@@ -42,4 +42,5 @@ React + TypeScript frontend for the social media platform.
 - Create and view posts
 - Like and comment
 - User profiles and search
+- Semantic search (RAG — Moonshot AI + Pinecone)
 - Responsive design

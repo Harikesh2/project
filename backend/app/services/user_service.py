@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError
 
 from app.database.connection import db_connection
 from app.core.config import settings
+from app.services.embedding_service import embedding_service
 from app.models.user import (
     User,
     UserCreate,
@@ -60,6 +61,15 @@ class UserService:
                 )
                 await table.put_item(Item=profile.to_dynamo_item())
                 logger.info(f"Created user {user_id} in table '{self.table_name}'")
+
+                # Embed user vector (best-effort)
+                try:
+                    embedding_service.upsert_user(
+                        user_id, user_data.username, user_data.bio or ""
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to embed user {user_id}: {e}")
+
                 return merge_user_records(metadata, profile)
 
             except ClientError as e:
@@ -182,6 +192,17 @@ class UserService:
                         ExpressionAttributeValues=profile_values,
                     )
 
+                # Re-embed if username or bio changed (best-effort)
+                if user_data.username is not None or user_data.bio is not None:
+                    try:
+                        user = await self._get_user_items(table, user_id)
+                        if user:
+                            embedding_service.upsert_user(
+                                user_id, user.username, user.bio or ""
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to re-embed user {user_id}: {e}")
+
                 return await self._get_user_items(table, user_id)
 
             except ClientError as e:
@@ -201,40 +222,68 @@ class UserService:
                 await table.delete_item(Key=UserEntityKeys.metadata_key(user_id))
                 await table.delete_item(Key=UserEntityKeys.profile_key(user_id))
                 logger.info(f"Deleted user {user_id}")
+
+                # Delete user vector (best-effort)
+                try:
+                    embedding_service.delete_user_vector(user_id)
+                except Exception as e:
+                    logger.error(f"Failed to delete user vector {user_id}: {e}")
+
                 return True
             except ClientError as e:
                 logger.error(f"Error deleting user {user_id}: {e}")
                 return False
 
-    async def search_users(self, query: str, limit: int = 20) -> List[UserSearch]:
-        """Search users by username (contains). Requires Scan — no GSI for partial match."""
+    async def batch_get_users(self, user_ids: List[str]) -> List[User]:
+        """Fetch multiple users by ID via BatchGetItem, preserving input order."""
+        if not user_ids:
+            return []
+
         async with db_connection.get_async_resource() as dynamodb:
             table = await dynamodb.Table(self.table_name)
+            users: List[User] = []
 
-            try:
-                response = await table.scan(
-                    FilterExpression=(
-                        Attr("Pk").begins_with(UserEntityKeys.USER_PK_PREFIX)
-                        & Attr("Sk").eq(UserEntityKeys.METADATA_SK)
-                        & Attr("username").contains(query)
-                    ),
-                    Limit=limit,
-                )
+            for i in range(0, len(user_ids), 100):
+                chunk = user_ids[i : i + 100]
+                try:
+                    response = await table.batch_get_item(
+                        RequestItems={
+                            self.table_name: {
+                                "Keys": [
+                                    UserEntityKeys.metadata_key(uid) for uid in chunk
+                                ]
+                            }
+                        }
+                    )
+                    id_to_user: dict[str, User] = {}
+                    for item in response.get("Responses", {}).get(self.table_name, []):
+                        uid = item.get("user_id")
+                        if uid:
+                            profile = await self._get_profile(table, uid)
+                            user = merge_user_records(
+                                UserMetadataRecord.from_dynamo_item(item), profile
+                            )
+                            id_to_user[uid] = user
+                    users.extend(id_to_user[uid] for uid in user_ids if uid in id_to_user)
+                except ClientError as e:
+                    logger.error(f"Error in batch_get_users: {e}")
 
-                users: List[UserSearch] = []
-                for item in response["Items"]:
-                    user_id = item.get("user_id")
-                    if not user_id:
-                        continue
-                    user = await self.get_user_by_id(user_id)
-                    if user:
-                        users.append(UserSearch.from_user(user))
+            return users
 
-                return users
+    async def search_users(self, query: str, limit: int = 20) -> List[UserSearch]:
+        """Search users. Empty query returns recent; otherwise semantic search with keyword fallback."""
+        if not query.strip():
+            return await _recent_users(self, limit)
 
-            except ClientError as e:
-                logger.error(f"Error searching users: {e}")
-                raise
+        # Semantic search via Pinecone
+        user_ids = embedding_service.search_users(query, limit=limit)
+        if user_ids:
+            users = await self.batch_get_users(user_ids)
+            if users:
+                return [UserSearch.from_user(u) for u in users]
+
+        # Fallback: keyword Scan
+        return await _keyword_search_users(self, query, limit)
 
     async def increment_followers_count(self, user_id: str, increment: int = 1):
         """Increment followers count on METADATA."""
@@ -280,6 +329,61 @@ class UserService:
             except ClientError as e:
                 logger.error(f"Error updating posts count for {user_id}: {e}")
                 raise
+
+
+async def _recent_users(svc: "UserService", limit: int) -> List[UserSearch]:
+    """Bounded scan for recent users (no GSI for latest users; fine at hobby scale)."""
+    async with db_connection.get_async_resource() as dynamodb:
+        table = await dynamodb.Table(svc.table_name)
+        try:
+            response = await table.scan(
+                FilterExpression=(
+                    Attr("Pk").begins_with(UserEntityKeys.USER_PK_PREFIX)
+                    & Attr("Sk").eq(UserEntityKeys.METADATA_SK)
+                ),
+                Limit=limit,
+            )
+            users: List[UserSearch] = []
+            for item in response["Items"]:
+                uid = item.get("user_id")
+                if not uid:
+                    continue
+                user = await svc.get_user_by_id(uid)
+                if user:
+                    users.append(UserSearch.from_user(user))
+            return users
+        except ClientError as e:
+            logger.error(f"Error fetching recent users: {e}")
+            return []
+
+
+async def _keyword_search_users(
+    svc: "UserService", query: str, limit: int
+) -> List[UserSearch]:
+    """Fallback keyword Scan on username (contains)."""
+    async with db_connection.get_async_resource() as dynamodb:
+        table = await dynamodb.Table(svc.table_name)
+        try:
+            response = await table.scan(
+                FilterExpression=(
+                    Attr("Pk").begins_with(UserEntityKeys.USER_PK_PREFIX)
+                    & Attr("Sk").eq(UserEntityKeys.METADATA_SK)
+                    & Attr("username").contains(query)
+                ),
+                Limit=limit,
+            )
+            users: List[UserSearch] = []
+            for item in response["Items"]:
+                uid = item.get("user_id")
+                if not uid:
+                    continue
+                user = await svc.get_user_by_id(uid)
+                if user:
+                    users.append(UserSearch.from_user(user))
+            return users
+        except ClientError as e:
+            logger.error(f"Error in keyword user search: {e}")
+            return []
 
 
 user_service = UserService()

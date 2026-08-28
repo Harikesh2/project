@@ -144,17 +144,17 @@ export const usePostService = () => {
     });
   };
 
-  // Search posts
+  // Search posts (RAG semantic search; empty query returns global feed)
   const useSearchPosts = (query: string, enabled: boolean = true) => {
     return useQuery({
       queryKey: ['posts', 'search', query],
       queryFn: async (): Promise<PostWithUser[]> => {
-        const response = await api.get('/posts/search', {
+        const response = await api.get('/search/posts', {
           params: { q: query, limit: 20 }
         });
         return response.data;
       },
-      enabled: enabled && query.length > 0,
+      enabled,
     });
   };
 
