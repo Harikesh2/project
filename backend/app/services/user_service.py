@@ -246,7 +246,8 @@ class UserService:
             for i in range(0, len(user_ids), 100):
                 chunk = user_ids[i : i + 100]
                 try:
-                    response = await dynamodb.batch_get_item(
+                    # Batch 1: fetch all METADATA items
+                    meta_resp = await dynamodb.batch_get_item(
                         RequestItems={
                             self.table_name: {
                                 "Keys": [
@@ -255,16 +256,31 @@ class UserService:
                             }
                         }
                     )
-                    id_to_user: dict[str, User] = {}
-                    for item in response.get("Responses", {}).get(self.table_name, []):
-                        uid = item.get("user_id")
-                        if uid:
-                            profile = await self._get_profile(table, uid)
-                            user = merge_user_records(
-                                UserMetadataRecord.from_dynamo_item(item), profile
-                            )
-                            id_to_user[uid] = user
-                    users.extend(id_to_user[uid] for uid in user_ids if uid in id_to_user)
+                    meta_items = {
+                        item["user_id"]: item
+                        for item in meta_resp.get("Responses", {}).get(self.table_name, [])
+                        if item.get("user_id")
+                    }
+
+                    # Batch 2: fetch all PROFILE items (eliminates N+1)
+                    profile_keys = [UserEntityKeys.profile_key(uid) for uid in meta_items]
+                    profiles_by_id: dict[str, UserProfileItem] = {}
+                    if profile_keys:
+                        prof_resp = await dynamodb.batch_get_item(
+                            RequestItems={
+                                self.table_name: {"Keys": profile_keys}
+                            }
+                        )
+                        for item in prof_resp.get("Responses", {}).get(self.table_name, []):
+                            uid = item.get("user_id")
+                            if uid:
+                                profiles_by_id[uid] = UserProfileItem.from_dynamo_item(item)
+
+                    for uid in chunk:
+                        if uid in meta_items:
+                            metadata = UserMetadataRecord.from_dynamo_item(meta_items[uid])
+                            profile = profiles_by_id.get(uid)
+                            users.append(merge_user_records(metadata, profile))
                 except ClientError as e:
                     logger.error(f"Error in batch_get_users: {e}")
 

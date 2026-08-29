@@ -290,3 +290,21 @@ print(f"users vectors: {stats.vector_count}")
 | 2 | Pinecone index (infra) | Phase 0 |
 | 3 | `backfill_embeddings.py` (bug fix) | Phase 1, 2 |
 | 4 | None (verification only) | Phase 3 |
+
+
+
+# Deferred Fixes
+
+Low-priority items from ponytail review. Fix when scale demands it or during a cleanup sprint.
+
+## 1. N+1 username fetch in backfill script
+**File:** `backend/scripts/backfill_embeddings.py:35-38`
+**Issue:** `backfill_posts()` calls `table.get_item()` for each post's username inside the scan loop.
+**When to fix:** Only if backfill becomes slow on large datasets. It's a one-shot script — batch-fetching usernames adds complexity for negligible gain at current scale.
+**Fix approach:** Collect all `user_id`s per scan page, batch-fetch metadata once, build a lookup dict.
+
+## 2. Redundant fallback logic in search routes
+**File:** `backend/app/api/search.py` (post search)
+**Issue:** Post search has a fallback to `get_global_feed` on empty query AND on empty vector results. Both are intentional but could be collapsed into `post_service` method.
+**When to fix:** If a third search backend is added (e.g. Elasticsearch), consolidate the fallback logic in the service layer instead of the route.
+**Fix approach:** Move the "try vector, fallback to recent" pattern into `post_service.search_posts()`.

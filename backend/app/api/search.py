@@ -48,13 +48,5 @@ async def search_users(
     limit: int = Query(20, ge=1, le=50),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    if not q.strip():
-        return await user_service.search_users("", limit)
-
-    user_ids = embedding_service.search_users(q, limit=limit)
-    if user_ids:
-        users = await user_service.batch_get_users(user_ids)
-        if users:
-            return [UserSearch.from_user(u) for u in users]
-
+    # search_users already handles empty queries (returns recent users)
     return await user_service.search_users(q, limit)
