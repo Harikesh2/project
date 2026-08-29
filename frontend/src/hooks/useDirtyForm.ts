@@ -54,7 +54,7 @@ function isDeepEqual<T extends Record<string, unknown>>(a: T, b: T): boolean {
  * `isDirty` is `true` whenever the current `formData` differs from the
  * snapshot stored at creation time (or since the last `resetOriginal` call).
  */
-export function useDirtyForm<T extends Record<string, any>>(initialValues: T) {
+export function useDirtyForm<T extends Record<string, unknown>>(initialValues: T) {
   const originalRef = useRef<T>(initialValues);
   const [formData, setFormData] = useState<T>(initialValues);
 

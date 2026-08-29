@@ -122,6 +122,8 @@ New users with 0 follows see empty feed `[]`. No global feed fallback existed.
 |---|----------|--------|
 | D18 | **`get_global_feed(table=None)`** — optional param; opens own connection when None. Search endpoint calls with None (simple), feed endpoint passes shared table | Locked |
 | D19 | **Search user lookups** — batch via `batch_get_users()` instead of N+1 `get_user_by_id()` calls | Locked |
+| D20 | **Search tests mock Pinecone** — `embedding_service.search_users` patched to `[]` so tests exercise keyword fallback path, not external API | Locked |
+| D21 | **Single CI workflow** — `backend-ci.yml` renamed to `ci.yml`; added `frontend` job (Node 18, `npm ci`, `npm run lint`, `npm run build`) running parallel to `backend` job | Locked |
 
 ---
 

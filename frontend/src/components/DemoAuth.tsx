@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { User, Mail, Lock } from 'lucide-react';
+import { User as UserType } from '@/types';
 
 interface DemoAuthProps {
-  onLogin: (user: any) => void;
+  onLogin: (user: UserType) => void;
 }
 
 export default function DemoAuth({ onLogin }: DemoAuthProps) {

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 import { useApi } from './api';
 import { User, UserProfile, UserCreate, UserUpdate, UserSearch, FollowWithUser } from '@/types';
 import toast from 'react-hot-toast';
@@ -30,7 +31,7 @@ export const useUserService = () => {
         queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
         toast.success('Profile created successfully!');
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to create profile');
       },
     });
@@ -47,7 +48,7 @@ export const useUserService = () => {
         queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
         toast.success('Profile updated successfully!');
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to update profile');
       },
     });
@@ -95,7 +96,7 @@ export const useUserService = () => {
         
         toast.success(data.following ? 'User followed!' : 'User unfollowed!');
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to update follow status');
       },
     });
@@ -115,7 +116,7 @@ export const useUserService = () => {
         queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
         toast.success('Avatar updated successfully!');
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to update avatar');
       },
     });

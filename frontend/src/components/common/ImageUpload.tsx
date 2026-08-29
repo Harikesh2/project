@@ -27,7 +27,7 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ onUploadSuccess, label = "Upl
     } else if (!file) {
       setPreview(null);
     }
-  }, [initialImageUrl]);
+  }, [initialImageUrl, file]);
 
   const validateFile = (selectedFile: File) => {
     if (!ALLOWED_TYPES.includes(selectedFile.type)) {
@@ -85,7 +85,9 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ onUploadSuccess, label = "Upl
         file, 
         () => getToken(),
         (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          const percentCompleted = progressEvent.total
+            ? Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            : 0;
           setProgress(percentCompleted);
         }
       );
@@ -95,9 +97,10 @@ const ImageUpload: React.FC<ImageUploadProps> = ({ onUploadSuccess, label = "Upl
       // Keep the preview of the newly uploaded cloud URL
       setPreview(response.url);
       if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Upload error:", err);
-      setError(err.response?.data?.detail || "Failed to upload image. Please try again.");
+      const message = err instanceof Error ? err.message : "Failed to upload image. Please try again.";
+      setError(message);
     } finally {
       setLoading(false);
     }

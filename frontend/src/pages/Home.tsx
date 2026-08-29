@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { AxiosError } from 'axios';
 
 import { usePostService } from '@/services/postService';
 import { useUserService } from '@/services/userService';
@@ -16,7 +17,7 @@ export default function Home() {
 
   // Redirect to profile creation if user doesn't exist
   useEffect(() => {
-    if (!userLoading && !currentUser && (error as any)?.response?.status === 404) {
+    if (!userLoading && !currentUser && (error instanceof AxiosError) && error.response?.status === 404) {
       navigate('/create-profile');
     }
   }, [currentUser, userLoading, error, navigate]);

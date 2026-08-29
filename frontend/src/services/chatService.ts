@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 import { useApi } from './api';
 import { Conversation, InboxItem, ChatMessage, CursorPage, UnreadCountResponse } from '@/types';
 import { chatSocket } from './reconnectingSocket';
@@ -18,7 +19,7 @@ export const useChatService = () => {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['chats'] });
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to open conversation');
       },
     });

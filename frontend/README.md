@@ -42,5 +42,14 @@ React + TypeScript frontend for the social media platform.
 - Create and view posts
 - Like and comment
 - User profiles and search
-- Semantic search (RAG — Moonshot AI + Pinecone)
+- Semantic search (RAG — Pinecone Inference)
 - Responsive design
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on push/PR to `main`:
+
+- **Lint** — `eslint` with zero-warning policy
+- **Build** — `tsc && vite build` (TypeScript strict mode)
+
+Both must pass before merge.

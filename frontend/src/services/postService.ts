@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 import { useApi } from './api';
 import { Post, PostWithUser, PostCreate, PostUpdate, CommentWithUser, CommentCreate } from '@/types';
 import toast from 'react-hot-toast';
@@ -21,7 +22,7 @@ export const usePostService = () => {
         queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
         toast.success('Post created successfully!');
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to create post');
       },
     });
@@ -76,7 +77,7 @@ export const usePostService = () => {
         queryClient.invalidateQueries({ queryKey: ['posts', 'user'] });
         toast.success('Post updated successfully!');
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to update post');
       },
     });
@@ -95,7 +96,7 @@ export const usePostService = () => {
         queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
         toast.success('Post deleted successfully!');
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to delete post');
       },
     });
@@ -184,7 +185,7 @@ export const usePostService = () => {
         queryClient.invalidateQueries({ queryKey: ['posts', 'feed'] });
         toast.success('Comment added successfully!');
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to add comment');
       },
     });
@@ -203,7 +204,7 @@ export const usePostService = () => {
         queryClient.invalidateQueries({ queryKey: ['posts', 'feed'] });
         toast.success('Comment deleted successfully!');
       },
-      onError: (error: any) => {
+      onError: (error: AxiosError<{detail?: string}>) => {
         toast.error(error.response?.data?.detail || 'Failed to delete comment');
       },
     });

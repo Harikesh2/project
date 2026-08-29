@@ -71,7 +71,7 @@ export default function Settings() {
       };
       resetOriginal(values);
     }
-  }, [currentUser]);
+  }, [currentUser, resetOriginal]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

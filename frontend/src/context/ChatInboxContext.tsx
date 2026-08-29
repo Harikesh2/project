@@ -50,7 +50,7 @@ export function ChatInboxProvider({ children }: ChatInboxProviderProps) {
     });
   }, [queryClient]);
 
-  const conversations = data?.items ?? [];
+  const conversations = useMemo(() => data?.items ?? [], [data?.items]);
   const isEmpty = !isLoading && conversations.length === 0;
 
   const contextValue: ChatInboxContextValue = useMemo(

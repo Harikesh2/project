@@ -1,4 +1,5 @@
 import api from './api';
+import { AxiosProgressEvent } from 'axios';
 
 export interface UploadResponse {
   message: string;
@@ -15,7 +16,7 @@ export const uploadService = {
   async uploadImage(
     file: File, 
     getToken: () => Promise<string | null>,
-    onUploadProgress?: (progressEvent: any) => void
+    onUploadProgress?: (progressEvent: AxiosProgressEvent) => void
   ): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('file', file);

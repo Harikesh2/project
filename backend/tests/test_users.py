@@ -93,28 +93,29 @@ def test_get_user_by_id(client: TestClient):
     assert data["bio"] == "Alice bio"
 
 def test_search_users(client: TestClient):
-    """Test searching users by username"""
+    """Test searching users by username (Pinecone mocked — tests keyword fallback path)."""
+    from unittest.mock import patch
+
     # 1. Create test_user_123
     client.post("/api/users", json={
         "username": "alice_smith",
         "email": "alice@example.com",
         "bio": "Alice bio"
     })
-    
-    # To create another user, we bypass dependency injection and insert into DB directly if we want,
-    # or we can override the authentication headers / claims for another request.
-    # But even with one user, we can verify that search works!
-    response = client.get("/api/users/search", params={"q": "alice"})
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["username"] == "alice_smith"
-    assert data[0]["user_id"] == "test_user_123"
-    
-    # Search for non-existent user
-    response = client.get("/api/users/search", params={"q": "bob"})
-    assert response.status_code == 200
-    assert len(response.json()) == 0
+
+    # Mock Pinecone to return empty — forces keyword fallback path
+    with patch("app.api.search.embedding_service.search_users", return_value=[]):
+        response = client.get("/api/users/search", params={"q": "alice"})
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["username"] == "alice_smith"
+        assert data[0]["user_id"] == "test_user_123"
+
+        # Search for non-existent user
+        response = client.get("/api/users/search", params={"q": "bob"})
+        assert response.status_code == 200
+        assert len(response.json()) == 0
 
 def test_follow_and_unfollow_user(client: TestClient):
     """Test following and unfollowing a user"""
